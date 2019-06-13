@@ -19,40 +19,69 @@ type Clocked interface {
 }
 
 const (
-	BUFFER_LEN = 16
+	BUFFER_LEN = 512
 )
 
 type Engine struct {
 	samplingRate int // in samples/sec default 48kHz
-	period       time.Duration
-	ticker       *time.Ticker
-
-	clockedComponents []Clocked
 
 	input        chan Sample
 	outputBuffer []int16
 	outBufIdx    int
 	outputIdx    int
-
-	samples int64
 }
 
 func NewEngine() *Engine {
 	engine := &Engine{
-		samplingRate:      16000,
-		clockedComponents: make([]Clocked, 0),
-		input:             make(chan Sample, 0),
-		outputBuffer:      make([]int16, BUFFER_LEN),
-		outBufIdx:         0,
-		outputIdx:         0,
+		samplingRate: 44100,
+		input:        make(chan Sample, BUFFER_LEN),
 	}
-	periodSec := 1.0 / float32(engine.samplingRate)
-	engine.period = time.Duration(int(periodSec*1e9)) * time.Nanosecond
-	fmt.Printf("period: %v\n", engine.period)
-	engine.ticker = time.NewTicker(engine.period)
 
 	// wiring up some sample stuff here; this needs to be done better
-	engine.NewOscillator(263, engine.input)
+	outputMixer := NewMixer(engine.input)
+	carrier := engine.NewOscillator(440, outputMixer.A)
+	carrier.Output.Bias = 0.2
+	carrier.Output.Depth = 0.2
+	carrier.FM.Bias = 0.2
+	carrier.FM.Depth = 0.5
+
+	modulator := engine.NewOscillator(440, carrier.FM.CV)
+	modulator.Output.Bias = 1.0
+	modulator.Output.Depth = 1.0
+	modulator.FM.Bias = 0.5
+	modulator.FM.Depth = 0.5
+
+	modulator2 := engine.NewOscillator(440*3, modulator.FM.CV)
+	modulator2.Output.Bias = 1.0
+	modulator2.Output.Depth = 1.0
+
+	lfo := engine.NewOscillator(10, modulator2.Output.CV)
+	lfo.Output.Bias = 1.0
+
+	lfo2 := engine.NewOscillator(3, modulator.Output.CV)
+	lfo2.Output.Bias = 1.0
+
+	acarrier := engine.NewOscillator(660, outputMixer.B)
+	acarrier.Output.Bias = 0.2
+	acarrier.Output.Depth = 0.2
+	acarrier.FM.Bias = 0.2
+	acarrier.FM.Depth = 0.5
+
+	amodulator := engine.NewOscillator(660, acarrier.FM.CV)
+	amodulator.Output.Bias = 1.0
+	amodulator.Output.Depth = 1.0
+	amodulator.FM.Bias = 0.5
+	amodulator.FM.Depth = 0.5
+
+	amodulator2 := engine.NewOscillator(660*3, amodulator.FM.CV)
+	amodulator2.Output.Bias = 1.0
+	amodulator2.Output.Depth = 1.0
+
+	alfo := engine.NewOscillator(10, amodulator2.Output.CV)
+	alfo.Output.Bias = 1.0
+
+	alfo2 := engine.NewOscillator(3, amodulator.Output.CV)
+	alfo2.Output.Bias = 1.0
 
 	go engine.Run()
 
@@ -61,7 +90,6 @@ func NewEngine() *Engine {
 
 func (e *Engine) Run() {
 	go e.runAudio()
-	go e.runClock()
 }
 
 // TODO: this currently handles only mono 16bit audio
@@ -74,34 +102,15 @@ func (e *Engine) runAudio() {
 	if err := stream.Start(); err != nil {
 		panic(err)
 	}
-
-	for s := range e.input {
-		e.outputBuffer[e.outBufIdx] = s.As16bit()
-		e.outBufIdx = (e.outBufIdx + 1) % BUFFER_LEN
-	}
 }
 
 func (e *Engine) processAudio(_, out []int16) {
 	for i := range out {
-		out[i] = e.outputBuffer[(e.outputIdx+i)%BUFFER_LEN]
-	}
-}
-
-func (e *Engine) runClock() {
-	e.samples = 0
-	for t := range e.ticker.C {
-		for _, c := range e.clockedComponents {
-			c.Tick(t)
-		}
-		e.samples++
+		sample := <-e.input
+		out[i] = sample.As16bit()
 	}
 }
 
 func (e *Engine) Stop() {
-	fmt.Printf("ticked %d samples\n", e.samples)
 	fmt.Printf("Engine.Stop() should probably do something\n")
-}
-
-func (e *Engine) addClock(component Clocked) {
-	e.clockedComponents = append(e.clockedComponents, component)
 }
