@@ -35,25 +35,19 @@ func (engine *Engine) NewSimpleVoice(id int, output chan<- Sample) *Voice {
 }
 
 func (v *Voice) Trigger(pitch, velocity float64) {
-	fmt.Printf("triggering %.2fhz\n", pitch)
-	v.A.pitch.value = pitch * 2.0
-	v.A.phaseIdx = 0
-	v.A.amp.value = velocity * 0.7
-	v.C.pitch.value = pitch
-	v.C.phaseIdx = 0
-	v.C.amp.value = velocity
+	v.C.setPitch(pitch)
+	//v.C.amp.value = 1.0
+	v.C.envelope.trig()
 }
 
 func (v *Voice) Retrigger(pitch float64) {
-	v.A.pitch.value = pitch * 2.0
-	v.A.phaseIdx = 0
-	v.C.pitch.value = pitch
-	v.C.phaseIdx = 0
+	v.C.setPitch(pitch)
+	v.C.envelope.retrig()
 }
 
 func (v *Voice) Release() {
-	v.C.amp.value = 0.0
-	v.A.amp.value = 0.0
+	v.C.envelope.release()
+	//v.C.amp.value = 0.0
 }
 
 func (v *Voice) NoteOn(note, velocity byte) {

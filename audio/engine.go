@@ -3,25 +3,13 @@ package audio
 import (
 	"fmt"
 	"math"
-	"time"
 
 	"github.com/gordonklaus/portaudio"
 	"github.com/rakyll/portmidi"
 )
 
-/*
-	Engine has a ticker that is the main sample clock
-	all audio components instantiated from Engine
-	on tick, generative components generate their sample for current t based
-	on state of inputs/parameters (not sure if timing issues will bite me here)
-*/
-
-type Clocked interface {
-	Tick(t time.Time)
-}
-
 const (
-	NUM_VOICES = 8
+	NUM_VOICES = 2
 	BUFFER_LEN = 512
 
 	NoteOff         = 0x8
@@ -105,6 +93,8 @@ func (e *Engine) handleMidi() {
 				delete(e.voiceMap, note)
 				voice.NoteOff(note)
 			}
+		default:
+			fmt.Printf("unknown message: %x %x %x\n", event.Status, event.Data1, event.Data2)
 		}
 	}
 }
@@ -128,6 +118,9 @@ func (e *Engine) processAudio(_, out []int16) {
 			return
 		}
 		sample := <-e.input
+		if sample > 1.0 || sample < -1.0 {
+			fmt.Printf("clip! %.2f\n", sample)
+		}
 		out[i] = sample.As16bit()
 	}
 }

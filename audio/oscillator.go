@@ -5,30 +5,54 @@ import (
 	"time"
 )
 
-type param struct {
-	value   float64
-	cv      chan float64
-	depth   float64
-	depthcv chan float64
+type ADE struct {
+	Gated       bool
+	Retrigger   bool
+	Attack      time.Duration
+	Decay       time.Duration
+	EndLevel    float64
+	outputParam *param
 }
 
-func Param() *param {
-	return &param{
-		cv:      make(chan float64, BUFFER_LEN),
-		depthcv: make(chan float64, BUFFER_LEN),
+func (a ADE) trig() {
+	go func() {
+		attackSteps := a.Attack.Nanoseconds() / 1000 / 1000 // step envelopes in 1ms steps
+		for i := int64(0); i <= attackSteps; i++ {
+			ampVal := float64(i) / float64(attackSteps)
+			a.outputParam.value = ampVal
+			//fmt.Printf("rising step %d of %d amp: %.2f\n", i, attackSteps, ampVal)
+			time.Sleep(1 * time.Millisecond)
+		}
+		if !a.Gated {
+			decaySteps := a.Decay.Nanoseconds() / 1000 / 1000
+			for i := int64(0); i <= decaySteps; i++ {
+				ampVal := 1.0 - (float64(i) / float64(decaySteps))
+				a.outputParam.value = ampVal
+				//	fmt.Printf("trig decay step %d of %d amp: %.2f\n", i, decaySteps, ampVal)
+				time.Sleep(1 * time.Millisecond)
+			}
+		}
+	}()
+}
+
+func (a ADE) retrig() {
+	if a.Retrigger {
+		a.trig()
 	}
 }
 
-func (p *param) Value() float64 {
-	cv := 0.0
-	depthcv := 0.0
-	if len(p.cv) > 0 {
-		cv = <-p.cv
+func (a ADE) release() {
+	if a.Gated {
+		go func() {
+			decaySteps := a.Decay.Nanoseconds() / 1000 / 1000
+			for i := int64(0); i <= decaySteps; i++ {
+				ampVal := 1.0 - (float64(i) / float64(decaySteps))
+				a.outputParam.value = ampVal
+				//	fmt.Printf("gated decay step %d of %d amp: %.2f\n", i, decaySteps, ampVal)
+				time.Sleep(1 * time.Millisecond)
+			}
+		}()
 	}
-	if len(p.depthcv) > 0 {
-		depthcv = <-p.depthcv
-	}
-	return p.value + (p.depth+depthcv)*cv
 }
 
 type Oscillator struct {
@@ -36,8 +60,9 @@ type Oscillator struct {
 	table    []Sample
 	phaseIdx int
 
-	pitch *param
-	amp   *param
+	pitch    *param
+	amp      *param
+	envelope ADE
 
 	output chan<- Sample
 }
@@ -50,12 +75,20 @@ func (engine *Engine) NewOscillator(output chan<- Sample) *Oscillator {
 		phaseIdx: 0,
 		pitch:    Param(),
 		amp:      Param(),
+		envelope: ADE{true, true, 100 * time.Millisecond, 200 * time.Millisecond, 0.25, nil},
 		output:   output,
 	}
+
+	osc.envelope.outputParam = osc.amp
 
 	go osc.oscillate()
 
 	return osc
+}
+
+func (o *Oscillator) setPitch(freq float64) {
+	o.pitch.value = freq // handle portamento here probably
+	o.phaseIdx = 0.0
 }
 
 func (o *Oscillator) oscillate() {
@@ -73,7 +106,7 @@ func (o *Oscillator) oscillate() {
 		phaseIncr := int(math.Round(o.pitch.Value()))
 		o.phaseIdx = (o.phaseIdx + phaseIncr) % o.samplingRate
 		o.output <- Sample(o.amp.Value()) * o.table[o.phaseIdx]
-		time.Sleep(20 * time.Nanosecond)
+		time.Sleep(1 * time.Nanosecond)
 	}
 }
 
