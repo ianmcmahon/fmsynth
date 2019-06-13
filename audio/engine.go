@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gordonklaus/portaudio"
+	"github.com/rakyll/portmidi"
 )
 
 /*
@@ -20,68 +21,33 @@ type Clocked interface {
 
 const (
 	BUFFER_LEN = 512
+
+	NoteOff         = 0x8
+	NoteOn          = 0x9
+	PolyAftertouch  = 0xA
+	CC              = 0xB
+	ProgramChange   = 0xC
+	ChannelPressure = 0xD
+	PitchBend       = 0xE
 )
 
 type Engine struct {
 	samplingRate int // in samples/sec default 48kHz
 
-	input        chan Sample
-	outputBuffer []int16
-	outBufIdx    int
-	outputIdx    int
+	input      chan Sample
+	midiEvents <-chan portmidi.Event
+
+	voice *Voice
 }
 
-func NewEngine() *Engine {
+func NewEngine(midiStream <-chan portmidi.Event) *Engine {
 	engine := &Engine{
 		samplingRate: 44100,
 		input:        make(chan Sample, BUFFER_LEN),
+		midiEvents:   midiStream,
 	}
 
-	// wiring up some sample stuff here; this needs to be done better
-	outputMixer := NewMixer(engine.input)
-	carrier := engine.NewOscillator(440, outputMixer.A)
-	carrier.Output.Bias = 0.2
-	carrier.Output.Depth = 0.2
-	carrier.FM.Bias = 0.2
-	carrier.FM.Depth = 0.5
-
-	modulator := engine.NewOscillator(440, carrier.FM.CV)
-	modulator.Output.Bias = 1.0
-	modulator.Output.Depth = 1.0
-	modulator.FM.Bias = 0.5
-	modulator.FM.Depth = 0.5
-
-	modulator2 := engine.NewOscillator(440*3, modulator.FM.CV)
-	modulator2.Output.Bias = 1.0
-	modulator2.Output.Depth = 1.0
-
-	lfo := engine.NewOscillator(10, modulator2.Output.CV)
-	lfo.Output.Bias = 1.0
-
-	lfo2 := engine.NewOscillator(3, modulator.Output.CV)
-	lfo2.Output.Bias = 1.0
-
-	acarrier := engine.NewOscillator(660, outputMixer.B)
-	acarrier.Output.Bias = 0.2
-	acarrier.Output.Depth = 0.2
-	acarrier.FM.Bias = 0.2
-	acarrier.FM.Depth = 0.5
-
-	amodulator := engine.NewOscillator(660, acarrier.FM.CV)
-	amodulator.Output.Bias = 1.0
-	amodulator.Output.Depth = 1.0
-	amodulator.FM.Bias = 0.5
-	amodulator.FM.Depth = 0.5
-
-	amodulator2 := engine.NewOscillator(660*3, amodulator.FM.CV)
-	amodulator2.Output.Bias = 1.0
-	amodulator2.Output.Depth = 1.0
-
-	alfo := engine.NewOscillator(10, amodulator2.Output.CV)
-	alfo.Output.Bias = 1.0
-
-	alfo2 := engine.NewOscillator(3, amodulator.Output.CV)
-	alfo2.Output.Bias = 1.0
+	engine.voice = engine.NewSimpleVoice(engine.input)
 
 	go engine.Run()
 
@@ -90,6 +56,19 @@ func NewEngine() *Engine {
 
 func (e *Engine) Run() {
 	go e.runAudio()
+	go e.handleMidi()
+}
+
+func (e *Engine) handleMidi() {
+	for event := range e.midiEvents {
+		switch event.Status >> 4 {
+		case NoteOn:
+			e.voice.NoteOn(byte(event.Data1), byte(event.Data2))
+		case NoteOff:
+			e.voice.NoteOff(byte(event.Data1))
+		}
+		time.Sleep(20 * time.Nanosecond)
+	}
 }
 
 // TODO: this currently handles only mono 16bit audio
@@ -106,6 +85,10 @@ func (e *Engine) runAudio() {
 
 func (e *Engine) processAudio(_, out []int16) {
 	for i := range out {
+		if len(e.input) == 0 {
+			fmt.Printf("input buffer underrun!\n")
+			return
+		}
 		sample := <-e.input
 		out[i] = sample.As16bit()
 	}

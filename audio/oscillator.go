@@ -1,61 +1,55 @@
 package audio
 
 import (
-	"fmt"
 	"math"
+	"time"
 )
 
-type AttenuvertedInput struct {
-	CV      chan Sample
-	DepthCV chan Sample
-	Bias    Sample
-	Depth   Sample
+type param struct {
+	value   float64
+	cv      chan float64
+	depth   float64
+	depthcv chan float64
 }
 
-func Attenuverter() *AttenuvertedInput {
-	a := &AttenuvertedInput{
-		CV:    make(chan Sample, BUFFER_LEN),
-		Bias:  0.0,
-		Depth: 0.0,
+func Param() *param {
+	return &param{
+		cv:      make(chan float64, BUFFER_LEN),
+		depthcv: make(chan float64, BUFFER_LEN),
 	}
-	return a
 }
 
-func (a *AttenuvertedInput) Value() Sample {
-	cv := Sample(0.0)
-	depthCv := Sample(0.0)
-	if len(a.CV) > 0 {
-		cv = <-a.CV
+func (p *param) Value() float64 {
+	cv := 0.0
+	depthcv := 0.0
+	if len(p.cv) > 0 {
+		cv = <-p.cv
 	}
-	if len(a.DepthCV) > 0 {
-		depthCv = <-a.DepthCV
+	if len(p.depthcv) > 0 {
+		depthcv = <-p.depthcv
 	}
-	return a.Bias + (a.Depth+depthCv)*cv
+	return p.value + (p.depth+depthcv)*cv
 }
 
 type Oscillator struct {
 	*Engine
 	table    []Sample
-	freq     float64
 	phaseIdx int
-	log      bool
 
-	// controls
-	Output *AttenuvertedInput
-	FM     *AttenuvertedInput
+	pitch *param
+	amp   *param
 
 	output chan<- Sample
 }
 
-func (engine *Engine) NewOscillator(initialFreq float64, output chan<- Sample) *Oscillator {
+func (engine *Engine) NewOscillator(output chan<- Sample) *Oscillator {
 	sineTable = makeSineTable(engine.samplingRate)
 	osc := &Oscillator{
 		Engine:   engine,
 		table:    sineTable,
-		freq:     initialFreq,
 		phaseIdx: 0,
-		Output:   Attenuverter(),
-		FM:       Attenuverter(),
+		pitch:    Param(),
+		amp:      Param(),
 		output:   output,
 	}
 
@@ -76,23 +70,16 @@ func (o *Oscillator) oscillate() {
 	for {
 		// this should be freq * (table_len / sampling_rate) I believe
 		// but since our table is 1Hz at sampling_rate, len/rate = 1
-		phaseIncr := int(math.Round(o.freq + o.freq*float64(o.FM.Value())))
+		phaseIncr := int(math.Round(o.pitch.Value()))
 		o.phaseIdx = (o.phaseIdx + phaseIncr) % o.samplingRate
-
-		// amplitude is the sum of the level "knob" setting and the level CV input times the depth
-		amp := o.Output.Value()
-		o.output <- amp * o.table[o.phaseIdx]
+		o.output <- Sample(o.amp.Value()) * o.table[o.phaseIdx]
+		time.Sleep(20 * time.Nanosecond)
 	}
 }
 
 var (
 	sineTable []Sample
 )
-
-func init() {
-	fmt.Printf("Oscillator init(): setting up wavetables\n")
-
-}
 
 // TODO: make this cache generated tables
 func makeSineTable(tableLength int) []Sample {
