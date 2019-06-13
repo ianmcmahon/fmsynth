@@ -2,6 +2,7 @@ package audio
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/gordonklaus/portaudio"
@@ -20,6 +21,7 @@ type Clocked interface {
 }
 
 const (
+	NUM_VOICES = 8
 	BUFFER_LEN = 512
 
 	NoteOff         = 0x8
@@ -37,7 +39,8 @@ type Engine struct {
 	input      chan Sample
 	midiEvents <-chan portmidi.Event
 
-	voice *Voice
+	voices   []*Voice
+	voiceMap map[byte]*Voice
 }
 
 func NewEngine(midiStream <-chan portmidi.Event) *Engine {
@@ -45,9 +48,15 @@ func NewEngine(midiStream <-chan portmidi.Event) *Engine {
 		samplingRate: 44100,
 		input:        make(chan Sample, BUFFER_LEN),
 		midiEvents:   midiStream,
+		voices:       make([]*Voice, NUM_VOICES),
+		voiceMap:     make(map[byte]*Voice, 0),
 	}
 
-	engine.voice = engine.NewSimpleVoice(engine.input)
+	mixer := NewMixer(NUM_VOICES, engine.input)
+
+	for i := range engine.voices {
+		engine.voices[i] = engine.NewSimpleVoice(i, mixer.Input(i))
+	}
 
 	go engine.Run()
 
@@ -59,15 +68,44 @@ func (e *Engine) Run() {
 	go e.handleMidi()
 }
 
+func (e *Engine) getVoice(note byte) *Voice {
+	best := 127
+	var bestV *Voice
+	for _, v := range e.voices {
+		curNote := v.CurNote()
+		if curNote == 0 {
+			return v
+		}
+		dist := int(math.Abs(float64(curNote) - float64(note)))
+		fmt.Printf("voice %d is playing %d, we want %d, distance is %d\n", v.id, curNote, note, dist)
+		if dist < best {
+			best = dist
+			bestV = v
+		}
+	}
+	return bestV
+}
+
 func (e *Engine) handleMidi() {
 	for event := range e.midiEvents {
 		switch event.Status >> 4 {
 		case NoteOn:
-			e.voice.NoteOn(byte(event.Data1), byte(event.Data2))
+			note := byte(event.Data1)
+			vel := byte(event.Data2)
+			voice := e.getVoice(note)
+			if voice != nil {
+				e.voiceMap[note] = voice
+				voice.NoteOn(note, vel)
+			} else {
+				fmt.Printf("nil voice\n")
+			}
 		case NoteOff:
-			e.voice.NoteOff(byte(event.Data1))
+			note := byte(event.Data1)
+			if voice, ok := e.voiceMap[note]; ok {
+				delete(e.voiceMap, note)
+				voice.NoteOff(note)
+			}
 		}
-		time.Sleep(20 * time.Nanosecond)
 	}
 }
 

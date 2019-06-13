@@ -6,6 +6,7 @@ import (
 )
 
 type Voice struct {
+	id      int
 	notesOn []byte
 
 	A  *Oscillator
@@ -14,11 +15,20 @@ type Voice struct {
 	C  *Oscillator
 }
 
-func (engine *Engine) NewSimpleVoice(output chan<- Sample) *Voice {
+func (v *Voice) CurNote() byte {
+	if len(v.notesOn) == 0 {
+		return 0
+	}
+	return v.notesOn[len(v.notesOn)-1]
+}
+
+func (engine *Engine) NewSimpleVoice(id int, output chan<- Sample) *Voice {
 	mixer := NewMixer(2, output)
 	v := &Voice{
-		A: engine.NewOscillator(mixer.Input(0)),
-		C: engine.NewOscillator(mixer.Input(1)),
+		id:      id,
+		notesOn: make([]byte, 0),
+		A:       engine.NewOscillator(mixer.Input(0)),
+		C:       engine.NewOscillator(mixer.Input(1)),
 	}
 
 	return v
@@ -27,14 +37,18 @@ func (engine *Engine) NewSimpleVoice(output chan<- Sample) *Voice {
 func (v *Voice) Trigger(pitch, velocity float64) {
 	fmt.Printf("triggering %.2fhz\n", pitch)
 	v.A.pitch.value = pitch * 2.0
+	v.A.phaseIdx = 0
 	v.A.amp.value = velocity * 0.7
 	v.C.pitch.value = pitch
+	v.C.phaseIdx = 0
 	v.C.amp.value = velocity
 }
 
 func (v *Voice) Retrigger(pitch float64) {
 	v.A.pitch.value = pitch * 2.0
+	v.A.phaseIdx = 0
 	v.C.pitch.value = pitch
+	v.C.phaseIdx = 0
 }
 
 func (v *Voice) Release() {
@@ -54,6 +68,7 @@ func (v *Voice) NoteOn(note, velocity byte) {
 	}
 
 	on := false
+	fmt.Printf("%d: note on: %d: %v\n", v.id, note, v.notesOn)
 	for _, n := range v.notesOn {
 		if n == note {
 			on = true
