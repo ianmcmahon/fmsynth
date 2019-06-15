@@ -9,10 +9,8 @@ type Voice struct {
 	id      int
 	notesOn []byte
 
-	A  *Oscillator
-	B1 *Oscillator
-	B2 *Oscillator
-	C  *Oscillator
+	alg algorithm
+	vca envelope
 }
 
 func (v *Voice) CurNote() byte {
@@ -22,32 +20,44 @@ func (v *Voice) CurNote() byte {
 	return v.notesOn[len(v.notesOn)-1]
 }
 
-func (engine *Engine) NewSimpleVoice(id int, output chan<- Sample) *Voice {
-	mixer := NewMixer(2, output)
+func (engine *Engine) NewSimpleVoice(id int) *Voice {
 	v := &Voice{
 		id:      id,
 		notesOn: make([]byte, 0),
-		A:       engine.NewOscillator(mixer.Input(0)),
-		C:       engine.NewOscillator(mixer.Input(1)),
+		alg:     newTwoOpAlgorithm(),
+		vca: &adsrEnvelope{
+			gated:     true,
+			retrigger: false,
+			attack:    10,
+			decay:     10,
+			sustain:   float2fp32(0.6),
+			release:   20,
+		},
 	}
 
 	return v
 }
 
-func (v *Voice) Trigger(pitch, velocity float64) {
-	v.C.setPitch(pitch)
-	//v.C.amp.value = 1.0
-	v.C.envelope.trig()
+func (v *Voice) Render(out []fp32) {
+	v.alg.Render(out)
+	for i, s := range out {
+		out[i] = v.vca.Scale(s)
+	}
 }
 
-func (v *Voice) Retrigger(pitch float64) {
-	v.C.setPitch(pitch)
-	v.C.envelope.retrig()
+func (v *Voice) trigger(pitch fp32, velocity byte) {
+	v.alg.Trigger(pitch, velocity)
+	v.vca.Trigger()
 }
 
-func (v *Voice) Release() {
-	v.C.envelope.release()
-	//v.C.amp.value = 0.0
+func (v *Voice) retrigger(pitch fp32) {
+	v.alg.Retrigger(pitch)
+	v.vca.Retrigger()
+}
+
+func (v *Voice) release() {
+	v.alg.Release()
+	v.vca.Release()
 }
 
 func (v *Voice) NoteOn(note, velocity byte) {
@@ -73,7 +83,7 @@ func (v *Voice) NoteOn(note, velocity byte) {
 		v.notesOn = append(v.notesOn, note)
 	}
 
-	v.Trigger(note2freq(note), float64(velocity)/127.0)
+	v.trigger(note2freq(note), velocity)
 }
 
 func (v *Voice) NoteOff(note byte) {
@@ -85,12 +95,12 @@ func (v *Voice) NoteOff(note byte) {
 	}
 
 	if len(v.notesOn) > 0 {
-		v.Retrigger(note2freq(v.notesOn[len(v.notesOn)-1]))
+		v.retrigger(note2freq(v.notesOn[len(v.notesOn)-1]))
 	} else {
-		v.Release()
+		v.release()
 	}
 }
 
-func note2freq(note byte) float64 {
-	return math.Pow(2, (float64(note)-69.0)/12.0) * 440.0
+func note2freq(note byte) fp32 {
+	return float2fp32(math.Pow(2, (float64(note)-69.0)/12.0) * 440.0)
 }

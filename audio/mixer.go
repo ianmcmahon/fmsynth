@@ -1,55 +1,45 @@
 package audio
 
-import (
-	"fmt"
-	"time"
-)
+import "fmt"
 
 type mixerChannel struct {
-	Input chan Sample
-	Level *param
-	atten float64
+	from  Output
+	level fp32
+	atten fp32
 }
 
 type Mixer struct {
 	Inputs []*mixerChannel
-	Output chan<- Sample
 }
 
-func (m *Mixer) Input(n int) chan<- Sample {
-	return m.Inputs[n].Input
-}
-
-func NewMixer(inputs int, output chan<- Sample) *Mixer {
-	fmt.Printf("inst'ng mixer %d inputs, output chan: %v\n", inputs, output)
+func NewMixer(inputs int) *Mixer {
+	fmt.Printf("inst'ng mixer %d inputs\n", inputs)
 	mixer := &Mixer{
 		Inputs: make([]*mixerChannel, inputs),
-		Output: output,
 	}
 
 	for i, _ := range mixer.Inputs {
 		mixer.Inputs[i] = &mixerChannel{
-			Input: make(chan Sample, BUFFER_LEN),
-			Level: Param(),
-			atten: 1.0 / float64(inputs),
+			level: float2fp32(1.0),
+			atten: float2fp32(1.0 / float64(inputs)),
 		}
-		mixer.Inputs[i].Level.value = 1.0
 	}
 
-	go func() {
-		for {
-			var sum float64
-			for _, channel := range mixer.Inputs {
-				if len(channel.Input) > 0 {
-					sample := <-channel.Input
-					attenuated := (float64(sample) * channel.atten) * channel.Level.Value()
-					sum += attenuated
-				}
-			}
-			mixer.Output <- Sample(sum)
-			time.Sleep(10 * time.Nanosecond)
-		}
-	}()
-
 	return mixer
+}
+
+func (m *Mixer) Render(out []fp32) {
+	bufs := make([][]fp32, len(m.Inputs))
+	for i, channel := range m.Inputs {
+		bufs[i] = make([]fp32, len(out))
+		channel.from.Render(bufs[i])
+	}
+	for i := range out {
+		sum := fp32(0)
+		for c, channel := range m.Inputs {
+			attenuated := channel.atten.mul(bufs[c][i]).mul(channel.level)
+			sum += attenuated
+		}
+		out[i] = sum
+	}
 }

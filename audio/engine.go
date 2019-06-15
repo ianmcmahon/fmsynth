@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	NUM_VOICES = 2
-	BUFFER_LEN = 512
+	NUM_VOICES    = 2
+	BUFFER_LEN    = 512
+	SAMPLING_RATE = 44100
 
 	NoteOff         = 0x8
 	NoteOn          = 0x9
@@ -21,29 +22,40 @@ const (
 	PitchBend       = 0xE
 )
 
+// anything can be an output if it makes noise
+// components get their input data a bufferful at a time
+// by calling Render() on the upstream outputs
+type Output interface {
+	Render(out []fp32)
+}
+
 type Engine struct {
 	samplingRate int // in samples/sec default 48kHz
 
-	input      chan Sample
+	input      Output
 	midiEvents <-chan portmidi.Event
 
 	voices   []*Voice
 	voiceMap map[byte]*Voice
+
+	audioChan chan fp32
 }
 
 func NewEngine(midiStream <-chan portmidi.Event) *Engine {
 	engine := &Engine{
-		samplingRate: 44100,
-		input:        make(chan Sample, BUFFER_LEN),
+		samplingRate: SAMPLING_RATE,
 		midiEvents:   midiStream,
 		voices:       make([]*Voice, NUM_VOICES),
 		voiceMap:     make(map[byte]*Voice, 0),
+		audioChan:    make(chan fp32, BUFFER_LEN),
 	}
 
-	mixer := NewMixer(NUM_VOICES, engine.input)
+	mixer := NewMixer(NUM_VOICES)
+	engine.input = mixer
 
 	for i := range engine.voices {
-		engine.voices[i] = engine.NewSimpleVoice(i, mixer.Input(i))
+		engine.voices[i] = engine.NewSimpleVoice(i)
+		mixer.Inputs[i].from = engine.voices[i]
 	}
 
 	go engine.Run()
@@ -102,26 +114,34 @@ func (e *Engine) handleMidi() {
 // TODO: this currently handles only mono 16bit audio
 // if we implement stereo effects this will need to be changed
 func (e *Engine) runAudio() {
-	stream, err := portaudio.OpenDefaultStream(0, 1, float64(e.samplingRate), BUFFER_LEN/2, e.processAudio)
+	stream, err := portaudio.OpenDefaultStream(0, 1, float64(e.samplingRate), BUFFER_LEN, e.processAudio)
 	if err != nil {
 		panic(err)
 	}
 	if err := stream.Start(); err != nil {
 		panic(err)
 	}
+
+	// audioChan will block when buffer is full
+	// when portaudio requests a chunk, processAudio consumes from the channel
+	// and this will unblock
+	buf := make([]fp32, BUFFER_LEN)
+	for {
+		e.input.Render(buf)
+		for _, s := range buf {
+			e.audioChan <- s
+		}
+	}
 }
 
 func (e *Engine) processAudio(_, out []int16) {
 	for i := range out {
-		if len(e.input) == 0 {
+		if len(e.audioChan) == 0 {
 			fmt.Printf("input buffer underrun!\n")
 			return
 		}
-		sample := <-e.input
-		if sample > 1.0 || sample < -1.0 {
-			fmt.Printf("clip! %.2f\n", sample)
-		}
-		out[i] = sample.As16bit()
+		sample := <-e.audioChan
+		out[i] = sample.to16bit()
 	}
 }
 
