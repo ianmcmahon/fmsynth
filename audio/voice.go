@@ -24,14 +24,14 @@ func (engine *Engine) NewSimpleVoice(id int) *Voice {
 	v := &Voice{
 		id:      id,
 		notesOn: make([]byte, 0),
-		alg:     newTwoOpAlgorithm(),
+		alg:     newTwoOpAlgorithm(float2fp32(11), 1<<24),
 		vca: &adsrEnvelope{
 			gated:     true,
 			retrigger: false,
-			attack:    10,
-			decay:     10,
-			sustain:   float2fp32(0.6),
-			release:   20,
+			attack:    100,
+			decay:     100,
+			sustain:   float2fp32(0.3),
+			release:   200,
 		},
 	}
 

@@ -1,7 +1,5 @@
 package audio
 
-import "fmt"
-
 type State byte
 
 const (
@@ -13,6 +11,7 @@ const (
 )
 
 // an envelope returns a CV for a given time based params
+// attack and decay are times in units of 32 samples (about 0.7ms)
 type envelope interface {
 	Trigger()
 	Retrigger()
@@ -27,27 +26,29 @@ type adeEnvelope struct {
 	decay     uint16
 	endLevel  fp32
 
-	triggered   bool
-	inDecay     bool
+	state       State
 	sampleCount uint32
 	current     fp32
 }
 
 func (e *adeEnvelope) Trigger() {
-	e.triggered = true
+	e.state = ATTACK
 	e.current = 0
 	e.sampleCount = 0
 }
 
 func (e *adeEnvelope) Retrigger() {
-	if !e.retrigger && e.triggered {
+	if !e.retrigger {
 		return
 	}
 	e.Trigger()
 }
 
 func (e *adeEnvelope) Release() {
-	e.triggered = false
+	if e.gated {
+		e.state = DECAY
+		e.sampleCount = 0
+	}
 }
 
 func (e *adeEnvelope) Scale(s fp32) fp32 {
@@ -55,44 +56,35 @@ func (e *adeEnvelope) Scale(s fp32) fp32 {
 	// this way I can shift down the sample count 10 bits and divide
 	e.sampleCount++
 
-	if e.triggered && !e.inDecay {
-		// attack phase
-		// if we're saturated, short circuit
+	switch e.state {
+	case ATTACK:
 		if e.current >= 1<<16 {
 			e.current = 1 << 16
-			if !e.gated {
-				e.inDecay = true
+			if e.gated {
+				e.state = SUSTAIN
+				e.sampleCount = 0
+			} else {
+				e.state = DECAY
+				e.sampleCount = 0
 			}
-			return e.current
+		} else {
+			e.current = fp32((e.sampleCount << 11) / uint32(e.attack))
 		}
-		// attack phase needs to complete in a.attack * 1024 samples
-		// units of time so far is sampleCount/1024
-		// proportion of attack phase completed is timeSoFar/a.attack
-		// I'm shifting up six bits which is equivalent to converting to fp32
-		// and then shifting down 10 bits
-		// this gives us an amplitude value scaled 0.0-1.0 in fp32
-		e.current = fp32((e.sampleCount << 6) / uint32(e.attack))
-		return e.current
-	} else {
-		if e.current > 1 {
-			e.inDecay = true
-		}
-	}
-
-	if e.inDecay {
-		// release phase
-		// if we're saturated, that's end of phase
+	case DECAY:
 		if e.current <= e.endLevel {
 			e.current = e.endLevel
-			e.inDecay = false
-			return e.current
+			e.state = COMPLETE
+			e.sampleCount = 0
+		} else {
+			e.current = fp32(1<<16) - fp32((e.sampleCount<<11)/uint32(e.decay)).mul(1<<16-e.endLevel)
 		}
-		// for decay, we do the same as attack, but current is 1 - (samples/1024)/decay
-		e.current = fp32(1<<16 - (e.sampleCount<<6)/uint32(e.decay))
-		return e.current
+	case SUSTAIN:
+		e.current = 1 << 16
+	case COMPLETE:
+		e.current = e.endLevel
 	}
 
-	return e.current
+	return s.mul(e.current)
 }
 
 type adsrEnvelope struct {
@@ -110,7 +102,6 @@ type adsrEnvelope struct {
 }
 
 func (e *adsrEnvelope) Trigger() {
-	fmt.Printf("trigger, going to ATTACK\n")
 	e.state = ATTACK
 	e.ref = e.current
 	e.sampleCount = 0
@@ -124,7 +115,6 @@ func (e *adsrEnvelope) Retrigger() {
 }
 
 func (e *adsrEnvelope) Release() {
-	fmt.Printf("release, going to RELEASE\n")
 	e.state = RELEASE
 	e.ref = e.current
 	e.sampleCount = 0
@@ -138,16 +128,14 @@ func (e *adsrEnvelope) Scale(s fp32) fp32 {
 		if e.current >= 1<<16 {
 			e.current = 1 << 16
 			if e.gated {
-				fmt.Printf("going to DECAY\n")
 				e.state = DECAY
 				e.sampleCount = 0
 			} else {
-				fmt.Printf("going to RELEASE\n")
 				e.state = RELEASE
 				e.sampleCount = 0
 			}
 		} else {
-			e.current = fp32((e.sampleCount << 6) / uint32(e.attack))
+			e.current = fp32((e.sampleCount << 11) / uint32(e.attack))
 			// this nice little hack ensures that if we trigger during the release of a previous cycle,
 			// the level stays continuous at where it was until the rise catches up
 			// to avoid a click at the discontinuity when it drops to 0
@@ -161,9 +149,8 @@ func (e *adsrEnvelope) Scale(s fp32) fp32 {
 			e.state = SUSTAIN
 			e.ref = e.current
 			e.sampleCount = 0
-			fmt.Printf("going to SUSTAIN\n")
 		} else {
-			e.current = fp32(1<<16) - fp32((e.sampleCount<<6)/uint32(e.decay)).mul(1<<16-e.sustain)
+			e.current = fp32(1<<16) - fp32((e.sampleCount<<11)/uint32(e.decay)).mul(1<<16-e.sustain)
 		}
 	case SUSTAIN:
 		e.current = e.sustain
@@ -172,15 +159,10 @@ func (e *adsrEnvelope) Scale(s fp32) fp32 {
 			e.current = 0
 			e.state = COMPLETE
 			e.sampleCount = 0
-			fmt.Printf("going to COMPLETE\n")
 		} else {
-			e.current = fp32(1<<16 - (e.sampleCount<<6)/uint32(e.release)).mul(e.ref)
+			e.current = fp32(1<<16 - (e.sampleCount<<11)/uint32(e.release)).mul(e.ref)
 		}
 	case COMPLETE:
-	}
-
-	if e.state != COMPLETE && e.sampleCount%1024 == 0 {
-		fmt.Printf("current: %.2f\n", float64(e.current)/65536.0)
 	}
 
 	return s.mul(e.current)

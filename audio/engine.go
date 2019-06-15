@@ -3,14 +3,15 @@ package audio
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/gordonklaus/portaudio"
 	"github.com/rakyll/portmidi"
 )
 
 const (
-	NUM_VOICES    = 2
-	BUFFER_LEN    = 512
+	NUM_VOICES    = 8
+	BUFFER_LEN    = 128
 	SAMPLING_RATE = 44100
 
 	NoteOff         = 0x8
@@ -47,7 +48,7 @@ func NewEngine(midiStream <-chan portmidi.Event) *Engine {
 		midiEvents:   midiStream,
 		voices:       make([]*Voice, NUM_VOICES),
 		voiceMap:     make(map[byte]*Voice, 0),
-		audioChan:    make(chan fp32, BUFFER_LEN),
+		audioChan:    make(chan fp32, BUFFER_LEN*2),
 	}
 
 	mixer := NewMixer(NUM_VOICES)
@@ -77,7 +78,7 @@ func (e *Engine) getVoice(note byte) *Voice {
 			return v
 		}
 		dist := int(math.Abs(float64(curNote) - float64(note)))
-		fmt.Printf("voice %d is playing %d, we want %d, distance is %d\n", v.id, curNote, note, dist)
+		//		fmt.Printf("voice %d is playing %d, we want %d, distance is %d\n", v.id, curNote, note, dist)
 		if dist < best {
 			best = dist
 			bestV = v
@@ -122,24 +123,38 @@ func (e *Engine) runAudio() {
 		panic(err)
 	}
 
+	renderTime := make([]time.Duration, 100)
+	go func() {
+		for {
+			var sum time.Duration
+			for _, d := range renderTime {
+				sum = sum + d
+			}
+			avg := sum / time.Duration(len(renderTime))
+			fmt.Printf("average render time: %s\n", avg)
+			time.Sleep(5 * time.Second)
+		}
+	}()
+
 	// audioChan will block when buffer is full
 	// when portaudio requests a chunk, processAudio consumes from the channel
 	// and this will unblock
 	buf := make([]fp32, BUFFER_LEN)
 	for {
+		start := time.Now()
 		e.input.Render(buf)
+		elapsed := time.Now().Sub(start)
+		renderTime = append(renderTime[:len(renderTime)-1], elapsed)
 		for _, s := range buf {
 			e.audioChan <- s
 		}
 	}
 }
 
+var underrun bool
+
 func (e *Engine) processAudio(_, out []int16) {
 	for i := range out {
-		if len(e.audioChan) == 0 {
-			fmt.Printf("input buffer underrun!\n")
-			return
-		}
 		sample := <-e.audioChan
 		out[i] = sample.to16bit()
 	}

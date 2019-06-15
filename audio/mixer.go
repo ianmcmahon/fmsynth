@@ -1,6 +1,9 @@
 package audio
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 type mixerChannel struct {
 	from  Output
@@ -10,6 +13,7 @@ type mixerChannel struct {
 
 type Mixer struct {
 	Inputs []*mixerChannel
+	wg     sync.WaitGroup
 }
 
 func NewMixer(inputs int) *Mixer {

@@ -37,18 +37,18 @@ func (a *twoOpAlgorithm) Release() {
 	a.mEnv.Release()
 }
 
-func newTwoOpAlgorithm() algorithm {
+func newTwoOpAlgorithm(ratio, level fp32) algorithm {
 	return &twoOpAlgorithm{
 		C:      &operator{},
 		M:      &operator{},
-		ratio:  fp32(1 << 16),
-		mLevel: fp32(1 << 24),
+		ratio:  ratio,
+		mLevel: level,
 		mEnv: &adeEnvelope{
-			gated:     true,
+			gated:     false,
 			retrigger: true,
-			attack:    5,
-			decay:     20,
-			endLevel:  float2fp32(0.25),
+			attack:    200,
+			decay:     800,
+			endLevel:  float2fp32(0.01),
 		},
 	}
 }
