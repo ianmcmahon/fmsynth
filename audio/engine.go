@@ -55,7 +55,7 @@ func NewEngine(midiStream <-chan portmidi.Event) *Engine {
 		audioChan:    make(chan fp32, BUFFER_LEN*2),
 	}
 
-	mixer := NewMixer(NUM_VOICES)
+	mixer := LevelMixer(NUM_VOICES)
 	engine.input = mixer
 
 	for i := range engine.voices {

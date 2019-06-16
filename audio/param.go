@@ -8,6 +8,8 @@ func (p paramId) AsString() string {
 	typ := p & 0xC
 
 	switch typ {
+	case PATCH_TYPE:
+		return fmt.Sprintf("PATCH_%s", p.patchParam())
 	case OPR_TYPE:
 		return fmt.Sprintf("OPR_%s-%s", p.opr(), p.oprParam())
 	case ENV_TYPE:
@@ -37,7 +39,7 @@ func (p paramId) oprParam() string {
 	case OPR_RATIO:
 		return "RATIO"
 	case OPR_FEEDBACK:
-		return "INDEX"
+		return "FEEDBACK"
 	}
 	return "undef"
 }
@@ -78,8 +80,23 @@ func (p paramId) envParam() string {
 	return "undef"
 }
 
+func (p paramId) patchParam() string {
+	switch p & 0xFC {
+	case PATCH_ALGORITHM:
+		return "ALGORITHM"
+	case PATCH_MIX:
+		return "MIX"
+	case PATCH_FEEDBACK:
+		return "FEEDBACK"
+	}
+	return "undef"
+}
+
 // these constants are combined together to get the unique param id for a particular param,
 // for instance envelope B's decay is ENV_DECAY|GRP_B, and operator B2's feedback would be OPR_FEEDBACK|GRP_B2
+// note that each operator has a feedback param, but in the digitone scheme only one operator
+// gets feedback.  The "patch level" param that the user can tweak is OPR_FEEDBACK|PATCH_TYPE
+// and the algorithm select wires it to the appropriate operator
 const (
 	GRP_A   paramId = 0x0
 	GRP_B   paramId = 0x1
@@ -89,8 +106,13 @@ const (
 	GRP_B2  paramId = 0x3 // B2 is an alias for D (digitone names)
 	GRP_VCA paramId = 0x3 // VCA is an alias for D (alg has three envelopes, A, B, and VCA)
 
-	OPR_TYPE paramId = 0x0 << 2
-	ENV_TYPE paramId = 0x1 << 2
+	PATCH_TYPE paramId = 0x0 << 2
+	OPR_TYPE   paramId = 0x1 << 2
+	ENV_TYPE   paramId = 0x2 << 2
+
+	PATCH_ALGORITHM paramId = 0x0<<4 | PATCH_TYPE
+	PATCH_FEEDBACK  paramId = 0x1<<4 | PATCH_TYPE
+	PATCH_MIX       paramId = 0x2<<4 | PATCH_TYPE
 
 	OPR_RATIO    paramId = 0x0<<4 | OPR_TYPE
 	OPR_FEEDBACK paramId = 0x1<<4 | OPR_TYPE
@@ -112,6 +134,30 @@ const (
 
 type param interface {
 	ID() paramId
+}
+
+type byteparam struct {
+	id  paramId
+	val byte
+}
+
+func (p *byteparam) ID() paramId {
+	return p.id
+}
+
+func (p *byteparam) Value() byte {
+	return p.val
+}
+
+func (p *byteparam) Set(v byte) {
+	p.val = v
+}
+
+func newByteParam(id paramId, defaultValue byte) *byteparam {
+	return &byteparam{
+		id:  id,
+		val: defaultValue,
+	}
 }
 
 type boolparam struct {

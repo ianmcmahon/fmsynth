@@ -80,10 +80,16 @@ func (e *adeEnvelope) Scale(s fp32) fp32 {
 	// this way I can shift down the sample count 10 bits and divide
 	e.sampleCount++
 
+	attack := e.attack.Value()
+	decay := e.decay.Value()
+	endlevel := e.endLevel.Value()
 	switch e.state {
 	case ATTACK:
-		// skip the phase if time is 0
-		if e.attack.Value() == 0 || e.current >= 1<<16 {
+		// can't have a zero attack or we get phase discontinuities (clicks)
+		if attack == 0 {
+			attack++
+		}
+		if e.current >= 1<<16 {
 			e.current = 1 << 16
 			if e.gated.Value() {
 				e.state = SUSTAIN
@@ -93,20 +99,23 @@ func (e *adeEnvelope) Scale(s fp32) fp32 {
 				e.sampleCount = 0
 			}
 		} else {
-			e.current = fp32((e.sampleCount << 11) / uint32(e.attack.Value()))
+			e.current = fp32((e.sampleCount << 11) / uint32(attack))
 		}
 	case DECAY:
-		if e.decay.Value() == 0 || e.current <= e.endLevel.Value() {
-			e.current = e.endLevel.Value()
+		if decay == 0 {
+			decay++
+		}
+		if decay == 0 || e.current <= endlevel {
+			e.current = endlevel
 			e.state = COMPLETE
 			e.sampleCount = 0
 		} else {
-			e.current = fp32(1<<16) - fp32((e.sampleCount<<11)/uint32(e.decay.Value())).mul(1<<16-e.endLevel.Value())
+			e.current = fp32(1<<16) - fp32((e.sampleCount<<11)/uint32(decay)).mul(1<<16-endlevel)
 		}
 	case SUSTAIN:
 		e.current = 1 << 16
 	case COMPLETE:
-		e.current = e.endLevel.Value()
+		e.current = endlevel
 	}
 
 	return s.mul(e.current)
@@ -163,9 +172,16 @@ func (e *adsrEnvelope) Release() {
 func (e *adsrEnvelope) Scale(s fp32) fp32 {
 	e.sampleCount++
 
+	attack := e.attack.Value()
+	decay := e.decay.Value()
+	sustain := e.sustain.Value()
+	release := e.release.Value()
 	switch e.state {
 	case ATTACK:
-		if e.attack.Value() == 0 || e.current >= 1<<16 {
+		if attack == 0 {
+			attack++
+		}
+		if attack == 0 || e.current >= 1<<16 {
 			e.current = 1 << 16
 			if e.gated.Value() {
 				e.state = DECAY
@@ -175,7 +191,7 @@ func (e *adsrEnvelope) Scale(s fp32) fp32 {
 				e.sampleCount = 0
 			}
 		} else {
-			e.current = fp32((e.sampleCount << 11) / uint32(e.attack.Value()))
+			e.current = fp32((e.sampleCount << 11) / uint32(attack))
 			// this nice little hack ensures that if we trigger during the release of a previous cycle,
 			// the level stays continuous at where it was until the rise catches up
 			// to avoid a click at the discontinuity when it drops to 0
@@ -184,23 +200,29 @@ func (e *adsrEnvelope) Scale(s fp32) fp32 {
 			}
 		}
 	case DECAY:
-		if e.decay.Value() == 0 || e.current <= e.sustain.Value() {
-			e.current = e.sustain.Value()
+		if decay == 0 {
+			decay++
+		}
+		if e.current <= sustain {
+			e.current = sustain
 			e.state = SUSTAIN
 			e.ref = e.current
 			e.sampleCount = 0
 		} else {
-			e.current = fp32(1<<16) - fp32((e.sampleCount<<11)/uint32(e.decay.Value())).mul(1<<16-e.sustain.Value())
+			e.current = fp32(1<<16) - fp32((e.sampleCount<<11)/uint32(decay)).mul(1<<16-sustain)
 		}
 	case SUSTAIN:
-		e.current = e.sustain.Value()
+		e.current = sustain
 	case RELEASE:
-		if e.release.Value() == 0 || e.current <= 0 {
+		if release == 0 {
+			release++
+		}
+		if e.current <= 0 {
 			e.current = 0
 			e.state = COMPLETE
 			e.sampleCount = 0
 		} else {
-			e.current = fp32(1<<16 - (e.sampleCount<<11)/uint32(e.release.Value())).mul(e.ref)
+			e.current = fp32(1<<16 - (e.sampleCount<<11)/uint32(release)).mul(e.ref)
 		}
 	case COMPLETE:
 	}

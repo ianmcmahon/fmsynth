@@ -11,14 +11,18 @@ type mixerChannel struct {
 	atten fp32
 }
 
-type Mixer struct {
+type Mixer interface {
+	Render(out []fp32)
+}
+
+type levelMixer struct {
 	Inputs []*mixerChannel
 	wg     sync.WaitGroup
 }
 
-func NewMixer(inputs int) *Mixer {
+func LevelMixer(inputs int) *levelMixer {
 	fmt.Printf("inst'ng mixer %d inputs\n", inputs)
-	mixer := &Mixer{
+	mixer := &levelMixer{
 		Inputs: make([]*mixerChannel, inputs),
 	}
 
@@ -32,7 +36,7 @@ func NewMixer(inputs int) *Mixer {
 	return mixer
 }
 
-func (m *Mixer) Render(out []fp32) {
+func (m *levelMixer) Render(out []fp32) {
 	bufs := make([][]fp32, len(m.Inputs))
 	for i, channel := range m.Inputs {
 		bufs[i] = make([]fp32, len(out))

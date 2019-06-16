@@ -23,6 +23,10 @@ func initialPatch() *patch {
 		params: make(map[paramId]param, 0),
 	}
 
+	p.addByte(PATCH_ALGORITHM, 0)
+	p.addFp32(PATCH_FEEDBACK, 0.0)
+	p.addFp32(PATCH_MIX, 0.5)
+
 	p.addFp32(OPR_RATIO|GRP_A, 1.0)
 	p.addFp32(OPR_RATIO|GRP_B1, 1.0)
 	p.addFp32(OPR_RATIO|GRP_B2, 1.0)
@@ -52,6 +56,14 @@ func initialPatch() *patch {
 	return p
 }
 
+func (p *patch) ByteParam(id paramId) *byteparam {
+	if v, ok := p.params[id].(*byteparam); ok {
+		return v
+	}
+	fmt.Printf("%s is a %T, expected byte\n", id.AsString(), p.params[id])
+	return nil
+}
+
 func (p *patch) BoolParam(id paramId) *boolparam {
 	if v, ok := p.params[id].(*boolparam); ok {
 		return v
@@ -73,6 +85,11 @@ func (p *patch) Fp32Param(id paramId) *fp32param {
 		return v
 	}
 	panic(fmt.Errorf("%s is a %T, expected fp32param\n", id.AsString(), p.params[id]))
+}
+
+func (p *patch) addByte(id paramId, v byte) {
+	p.params[id] = newByteParam(id, v)
+	fmt.Printf("adding byte param id %s\n", id.AsString())
 }
 
 func (p *patch) addBool(id paramId, v bool) {

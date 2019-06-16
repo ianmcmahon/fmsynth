@@ -6,9 +6,10 @@ var sineTable = makeSineTable(SAMPLING_RATE)
 
 // an operator is a single oscillator that can be phase modulated
 type operator struct {
-	group paramId
-	ratio *fp32param
-	phase fp32
+	group    paramId
+	ratio    *fp32param
+	feedback *fp32param
+	phase    fp32
 }
 
 func Operator(group paramId) *operator {
@@ -29,7 +30,23 @@ func (o *operator) rotate(freq, mod fp32) fp32 {
 	if o.phase >= SAMPLING_RATE {
 		o.phase -= SAMPLING_RATE
 	}
-	return sineTable[o.phase]
+	if o.phase < 0 {
+		o.phase = 0
+	}
+	sample := sineTable[o.phase]
+
+	if o.feedback != nil && o.feedback.Value() != 0 {
+		// now apply feedback
+		o.phase += sample.mul(o.feedback.Value()) >> 16
+		if o.phase >= SAMPLING_RATE {
+			o.phase -= SAMPLING_RATE
+		}
+		if o.phase < 0 {
+			o.phase = 0
+		}
+		sample = sineTable[o.phase]
+	}
+	return sample
 }
 
 // an algorithm is a particular configuration of operators and envelopes

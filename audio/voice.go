@@ -25,7 +25,7 @@ func (engine *Engine) NewSimpleVoice(id byte) *Voice {
 	v := &Voice{
 		id:      vId,
 		notesOn: make([]byte, 0),
-		alg:     newTwoOpAlgorithm(vId),
+		alg:     newFourOpAlgorithm(vId),
 		vca:     AdsrEnvelope(GRP_VCA),
 	}
 
