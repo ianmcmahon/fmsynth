@@ -1,5 +1,7 @@
 package audio
 
+import "fmt"
+
 type State byte
 
 const (
@@ -142,6 +144,7 @@ func (e *adsrEnvelope) Trigger() {
 	e.state = ATTACK
 	e.ref = e.current
 	e.sampleCount = 0
+	fmt.Printf("triggering adsr: %d, %d, %d, %d\n", e.attack.Value(), e.decay.Value(), e.sustain.Value(), e.release.Value())
 }
 
 func (e *adsrEnvelope) Retrigger() {
@@ -192,7 +195,7 @@ func (e *adsrEnvelope) Scale(s fp32) fp32 {
 	case SUSTAIN:
 		e.current = e.sustain.Value()
 	case RELEASE:
-		if e.decay.Value() == 0 || e.current <= 0 {
+		if e.release.Value() == 0 || e.current <= 0 {
 			e.current = 0
 			e.state = COMPLETE
 			e.sampleCount = 0

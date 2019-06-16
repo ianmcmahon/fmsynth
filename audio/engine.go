@@ -111,9 +111,31 @@ func (e *Engine) handleMidi() {
 				delete(e.voiceMap, note)
 				voice.NoteOff(note)
 			}
+		case CC:
+			num := byte(event.Data1)
+			val := byte(event.Data2)
+			e.HandleCC(num, val)
 		default:
 			fmt.Printf("unknown message: %x %x %x\n", event.Status, event.Data1, event.Data2)
 		}
+	}
+}
+
+func (e *Engine) HandleCC(num, val byte) {
+	fmt.Printf("CC %x -> %x\n", num, val)
+
+	// arbitrarily mapping the 4 knobs on my kbd to VCA ADSR
+	switch num {
+	case 0x14:
+		e.patch.Uint16Param(ENV_ATTACK | GRP_VCA).Set(uint16(val << 2))
+	case 0x15:
+		e.patch.Uint16Param(ENV_DECAY | GRP_VCA).Set(uint16(val << 2))
+	case 0x16:
+		s := fp32(val) << 9
+		fmt.Printf("setting sustain to %x -> %.2f\n", val, float64(s)/float64(1<<16))
+		e.patch.Fp32Param(ENV_SUSTAIN | GRP_VCA).Set(s)
+	case 0x17:
+		e.patch.Uint16Param(ENV_RELEASE | GRP_VCA).Set(uint16(val << 2))
 	}
 }
 

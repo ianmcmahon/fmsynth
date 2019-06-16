@@ -127,6 +127,10 @@ func (p *boolparam) Value() bool {
 	return p.val
 }
 
+func (p *boolparam) Set(v bool) {
+	p.val = v
+}
+
 func newBoolParam(id paramId, defaultValue bool) *boolparam {
 	return &boolparam{
 		id:  id,
@@ -152,6 +156,10 @@ func newUint16Param(id paramId, defaultValue uint16) *uint16param {
 		id:  id,
 		val: defaultValue,
 	}
+}
+
+func (p *uint16param) Set(v uint16) {
+	p.val = v
 }
 
 type fp32param struct {
