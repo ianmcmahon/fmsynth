@@ -6,7 +6,7 @@ import (
 )
 
 type Voice struct {
-	id      int
+	id      paramId
 	notesOn []byte
 
 	alg algorithm
@@ -20,18 +20,19 @@ func (v *Voice) CurNote() byte {
 	return v.notesOn[len(v.notesOn)-1]
 }
 
-func (engine *Engine) NewSimpleVoice(id int) *Voice {
+func (engine *Engine) NewSimpleVoice(id byte) *Voice {
+	vId := paramId(id) << 8
 	v := &Voice{
-		id:      id,
+		id:      vId,
 		notesOn: make([]byte, 0),
-		alg:     newTwoOpAlgorithm(float2fp32(11), 1<<24),
+		alg:     newTwoOpAlgorithm(vId),
 		vca: &adsrEnvelope{
-			gated:     true,
-			retrigger: false,
-			attack:    100,
-			decay:     100,
-			sustain:   float2fp32(0.3),
-			release:   200,
+			gated:     newBoolParam(vId|VCA_GATED, true),
+			retrigger: newBoolParam(vId|VCA_RETRIGGER, false),
+			attack:    newUint16Param(vId|VCA_ATTACK, 100),
+			decay:     newUint16Param(vId|VCA_ATTACK, 200),
+			sustain:   newFp32Param(vId|VCA_SUSTAIN, 0.3),
+			release:   newUint16Param(vId|VCA_RELEASE, 800),
 		},
 	}
 

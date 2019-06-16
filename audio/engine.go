@@ -55,7 +55,7 @@ func NewEngine(midiStream <-chan portmidi.Event) *Engine {
 	engine.input = mixer
 
 	for i := range engine.voices {
-		engine.voices[i] = engine.NewSimpleVoice(i)
+		engine.voices[i] = engine.NewSimpleVoice(byte(i))
 		mixer.Inputs[i].from = engine.voices[i]
 	}
 

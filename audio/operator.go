@@ -6,12 +6,17 @@ var sineTable = makeSineTable(SAMPLING_RATE)
 
 // an operator is a single oscillator that can be phase modulated
 type operator struct {
-	freq  fp32
+	freq  *fp32param
+	ratio *fp32param
 	phase fp32
 }
 
 // increments the phase based on frequency and returns the next sample
-func (o *operator) rotate(freq fp32) fp32 {
+// uses the param value of freq (which will incorporate mods eventually)
+// times the param val of ratio, plus phase increment (frequency modulation)
+func (o *operator) rotate(phaseIncr fp32) fp32 {
+	freq := o.freq.Value().mul(o.ratio.Value()) + phaseIncr
+
 	// phase (pitch / table_freq) * (table_len / sampling_rate) I believe
 	// but since our table is 1Hz at sampling_rate, len/rate = 1 and pitch/table = pitch
 	o.phase += freq >> 16

@@ -20,11 +20,11 @@ type envelope interface {
 }
 
 type adeEnvelope struct {
-	gated     bool
-	retrigger bool
-	attack    uint16
-	decay     uint16
-	endLevel  fp32
+	gated     *boolparam
+	retrigger *boolparam
+	attack    *uint16param
+	decay     *uint16param
+	endLevel  *fp32param
 
 	state       State
 	sampleCount uint32
@@ -38,14 +38,14 @@ func (e *adeEnvelope) Trigger() {
 }
 
 func (e *adeEnvelope) Retrigger() {
-	if !e.retrigger {
+	if !e.retrigger.Value() {
 		return
 	}
 	e.Trigger()
 }
 
 func (e *adeEnvelope) Release() {
-	if e.gated {
+	if e.gated.Value() {
 		e.state = DECAY
 		e.sampleCount = 0
 	}
@@ -60,7 +60,7 @@ func (e *adeEnvelope) Scale(s fp32) fp32 {
 	case ATTACK:
 		if e.current >= 1<<16 {
 			e.current = 1 << 16
-			if e.gated {
+			if e.gated.Value() {
 				e.state = SUSTAIN
 				e.sampleCount = 0
 			} else {
@@ -68,32 +68,32 @@ func (e *adeEnvelope) Scale(s fp32) fp32 {
 				e.sampleCount = 0
 			}
 		} else {
-			e.current = fp32((e.sampleCount << 11) / uint32(e.attack))
+			e.current = fp32((e.sampleCount << 11) / uint32(e.attack.Value()))
 		}
 	case DECAY:
-		if e.current <= e.endLevel {
-			e.current = e.endLevel
+		if e.current <= e.endLevel.Value() {
+			e.current = e.endLevel.Value()
 			e.state = COMPLETE
 			e.sampleCount = 0
 		} else {
-			e.current = fp32(1<<16) - fp32((e.sampleCount<<11)/uint32(e.decay)).mul(1<<16-e.endLevel)
+			e.current = fp32(1<<16) - fp32((e.sampleCount<<11)/uint32(e.decay.Value())).mul(1<<16-e.endLevel.Value())
 		}
 	case SUSTAIN:
 		e.current = 1 << 16
 	case COMPLETE:
-		e.current = e.endLevel
+		e.current = e.endLevel.Value()
 	}
 
 	return s.mul(e.current)
 }
 
 type adsrEnvelope struct {
-	gated     bool
-	retrigger bool
-	attack    uint16
-	decay     uint16
-	sustain   fp32
-	release   uint16
+	gated     *boolparam
+	retrigger *boolparam
+	attack    *uint16param
+	decay     *uint16param
+	sustain   *fp32param
+	release   *uint16param
 
 	state       State
 	sampleCount uint32
@@ -108,7 +108,7 @@ func (e *adsrEnvelope) Trigger() {
 }
 
 func (e *adsrEnvelope) Retrigger() {
-	if !e.retrigger {
+	if !e.retrigger.Value() {
 		return
 	}
 	e.Trigger()
@@ -127,7 +127,7 @@ func (e *adsrEnvelope) Scale(s fp32) fp32 {
 	case ATTACK:
 		if e.current >= 1<<16 {
 			e.current = 1 << 16
-			if e.gated {
+			if e.gated.Value() {
 				e.state = DECAY
 				e.sampleCount = 0
 			} else {
@@ -135,7 +135,7 @@ func (e *adsrEnvelope) Scale(s fp32) fp32 {
 				e.sampleCount = 0
 			}
 		} else {
-			e.current = fp32((e.sampleCount << 11) / uint32(e.attack))
+			e.current = fp32((e.sampleCount << 11) / uint32(e.attack.Value()))
 			// this nice little hack ensures that if we trigger during the release of a previous cycle,
 			// the level stays continuous at where it was until the rise catches up
 			// to avoid a click at the discontinuity when it drops to 0
@@ -144,23 +144,23 @@ func (e *adsrEnvelope) Scale(s fp32) fp32 {
 			}
 		}
 	case DECAY:
-		if e.current <= e.sustain {
-			e.current = e.sustain
+		if e.current <= e.sustain.Value() {
+			e.current = e.sustain.Value()
 			e.state = SUSTAIN
 			e.ref = e.current
 			e.sampleCount = 0
 		} else {
-			e.current = fp32(1<<16) - fp32((e.sampleCount<<11)/uint32(e.decay)).mul(1<<16-e.sustain)
+			e.current = fp32(1<<16) - fp32((e.sampleCount<<11)/uint32(e.decay.Value())).mul(1<<16-e.sustain.Value())
 		}
 	case SUSTAIN:
-		e.current = e.sustain
+		e.current = e.sustain.Value()
 	case RELEASE:
 		if e.current <= 0 {
 			e.current = 0
 			e.state = COMPLETE
 			e.sampleCount = 0
 		} else {
-			e.current = fp32(1<<16 - (e.sampleCount<<11)/uint32(e.release)).mul(e.ref)
+			e.current = fp32(1<<16 - (e.sampleCount<<11)/uint32(e.release.Value())).mul(e.ref)
 		}
 	case COMPLETE:
 	}
