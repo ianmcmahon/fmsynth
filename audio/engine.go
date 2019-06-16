@@ -39,6 +39,9 @@ type Engine struct {
 	voices   []*Voice
 	voiceMap map[byte]*Voice
 
+	// one global patch right now; this will need to be somewhere else once we're multitimbral
+	patch *patch
+
 	audioChan chan fp32
 }
 
@@ -48,6 +51,7 @@ func NewEngine(midiStream <-chan portmidi.Event) *Engine {
 		midiEvents:   midiStream,
 		voices:       make([]*Voice, NUM_VOICES),
 		voiceMap:     make(map[byte]*Voice, 0),
+		patch:        initialPatch(),
 		audioChan:    make(chan fp32, BUFFER_LEN*2),
 	}
 
@@ -56,6 +60,7 @@ func NewEngine(midiStream <-chan portmidi.Event) *Engine {
 
 	for i := range engine.voices {
 		engine.voices[i] = engine.NewSimpleVoice(byte(i))
+		engine.voices[i].applyPatch(engine.patch)
 		mixer.Inputs[i].from = engine.voices[i]
 	}
 

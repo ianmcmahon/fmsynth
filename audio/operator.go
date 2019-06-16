@@ -6,20 +6,26 @@ var sineTable = makeSineTable(SAMPLING_RATE)
 
 // an operator is a single oscillator that can be phase modulated
 type operator struct {
-	freq  *fp32param
+	group paramId
 	ratio *fp32param
 	phase fp32
 }
 
+func Operator(group paramId) *operator {
+	return &operator{group: group}
+}
+
+func (o *operator) applyPatch(p *patch) {
+	o.ratio = p.Fp32Param(OPR_RATIO | o.group)
+}
+
 // increments the phase based on frequency and returns the next sample
-// uses the param value of freq (which will incorporate mods eventually)
-// times the param val of ratio, plus phase increment (frequency modulation)
-func (o *operator) rotate(phaseIncr fp32) fp32 {
-	freq := o.freq.Value().mul(o.ratio.Value()) + phaseIncr
+func (o *operator) rotate(freq, mod fp32) fp32 {
+	f := freq.mul(o.ratio.Value()) + mod
 
 	// phase (pitch / table_freq) * (table_len / sampling_rate) I believe
 	// but since our table is 1Hz at sampling_rate, len/rate = 1 and pitch/table = pitch
-	o.phase += freq >> 16
+	o.phase += f >> 16
 	if o.phase >= SAMPLING_RATE {
 		o.phase -= SAMPLING_RATE
 	}
@@ -33,6 +39,7 @@ type algorithm interface {
 	Retrigger(pitch fp32)
 	Release()
 	Render(out []fp32)
+	applyPatch(p *patch)
 }
 
 type digitoneFourOpAlgorithm struct {

@@ -17,18 +17,34 @@ type envelope interface {
 	Retrigger()
 	Release()
 	Scale(fp32) fp32
+	applyPatch(p *patch)
 }
 
 type adeEnvelope struct {
+	group     paramId
 	gated     *boolparam
 	retrigger *boolparam
 	attack    *uint16param
 	decay     *uint16param
 	endLevel  *fp32param
+	index     *fp32param // this is stored with the envelope in the digitone style algorithm, it scales the envelope output
 
 	state       State
 	sampleCount uint32
 	current     fp32
+}
+
+func AdeEnvelope(group paramId) *adeEnvelope {
+	return &adeEnvelope{group: group}
+}
+
+func (e *adeEnvelope) applyPatch(p *patch) {
+	e.gated = p.BoolParam(ENV_GATED | e.group)
+	e.retrigger = p.BoolParam(ENV_RETRIGGER | e.group)
+	e.attack = p.Uint16Param(ENV_ATTACK | e.group)
+	e.decay = p.Uint16Param(ENV_DECAY | e.group)
+	e.endLevel = p.Fp32Param(ENV_ENDLEVEL | e.group)
+	e.index = p.Fp32Param(ENV_INDEX | e.group)
 }
 
 func (e *adeEnvelope) Trigger() {
@@ -51,6 +67,12 @@ func (e *adeEnvelope) Release() {
 	}
 }
 
+// the modulation index is stored on the envelope in this scheme
+// this function scales the index parameter by the current envelope amplitude
+func (e *adeEnvelope) ScaledIndex() fp32 {
+	return e.Scale(e.index.Value())
+}
+
 func (e *adeEnvelope) Scale(s fp32) fp32 {
 	// attack and decay are times in units of 1024 samples (about 22.8us for 44.1kHz)
 	// this way I can shift down the sample count 10 bits and divide
@@ -58,7 +80,8 @@ func (e *adeEnvelope) Scale(s fp32) fp32 {
 
 	switch e.state {
 	case ATTACK:
-		if e.current >= 1<<16 {
+		// skip the phase if time is 0
+		if e.attack.Value() == 0 || e.current >= 1<<16 {
 			e.current = 1 << 16
 			if e.gated.Value() {
 				e.state = SUSTAIN
@@ -71,7 +94,7 @@ func (e *adeEnvelope) Scale(s fp32) fp32 {
 			e.current = fp32((e.sampleCount << 11) / uint32(e.attack.Value()))
 		}
 	case DECAY:
-		if e.current <= e.endLevel.Value() {
+		if e.decay.Value() == 0 || e.current <= e.endLevel.Value() {
 			e.current = e.endLevel.Value()
 			e.state = COMPLETE
 			e.sampleCount = 0
@@ -88,6 +111,7 @@ func (e *adeEnvelope) Scale(s fp32) fp32 {
 }
 
 type adsrEnvelope struct {
+	group     paramId
 	gated     *boolparam
 	retrigger *boolparam
 	attack    *uint16param
@@ -99,6 +123,19 @@ type adsrEnvelope struct {
 	sampleCount uint32
 	current     fp32
 	ref         fp32
+}
+
+func AdsrEnvelope(group paramId) *adsrEnvelope {
+	return &adsrEnvelope{group: group}
+}
+
+func (e *adsrEnvelope) applyPatch(p *patch) {
+	e.gated = p.BoolParam(ENV_GATED | e.group)
+	e.retrigger = p.BoolParam(ENV_RETRIGGER | e.group)
+	e.attack = p.Uint16Param(ENV_ATTACK | e.group)
+	e.decay = p.Uint16Param(ENV_DECAY | e.group)
+	e.release = p.Uint16Param(ENV_RELEASE | e.group)
+	e.sustain = p.Fp32Param(ENV_SUSTAIN | e.group)
 }
 
 func (e *adsrEnvelope) Trigger() {
@@ -125,7 +162,7 @@ func (e *adsrEnvelope) Scale(s fp32) fp32 {
 
 	switch e.state {
 	case ATTACK:
-		if e.current >= 1<<16 {
+		if e.attack.Value() == 0 || e.current >= 1<<16 {
 			e.current = 1 << 16
 			if e.gated.Value() {
 				e.state = DECAY
@@ -144,7 +181,7 @@ func (e *adsrEnvelope) Scale(s fp32) fp32 {
 			}
 		}
 	case DECAY:
-		if e.current <= e.sustain.Value() {
+		if e.decay.Value() == 0 || e.current <= e.sustain.Value() {
 			e.current = e.sustain.Value()
 			e.state = SUSTAIN
 			e.ref = e.current
@@ -155,7 +192,7 @@ func (e *adsrEnvelope) Scale(s fp32) fp32 {
 	case SUSTAIN:
 		e.current = e.sustain.Value()
 	case RELEASE:
-		if e.current <= 0 {
+		if e.decay.Value() == 0 || e.current <= 0 {
 			e.current = 0
 			e.state = COMPLETE
 			e.sampleCount = 0

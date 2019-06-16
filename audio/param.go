@@ -1,32 +1,108 @@
 package audio
 
-type paramId uint16
+import "fmt"
 
+type paramId uint8
+
+func (p paramId) AsString() string {
+	typ := p & 0xC
+
+	switch typ {
+	case OPR_TYPE:
+		return fmt.Sprintf("OPR_%s-%s", p.opr(), p.oprParam())
+	case ENV_TYPE:
+		return fmt.Sprintf("ENV_%s-%s", p.env(), p.envParam())
+	default:
+		fmt.Printf("got %x as a param id, with a type of %x\n", p, typ)
+	}
+	return "undef"
+}
+
+func (p paramId) opr() string {
+	switch p & 0x03 {
+	case GRP_A:
+		return "A"
+	case GRP_B1:
+		return "B1"
+	case GRP_B2:
+		return "B2"
+	case GRP_C:
+		return "C"
+	}
+	return "undef"
+}
+
+func (p paramId) oprParam() string {
+	switch p & 0xFC {
+	case OPR_RATIO:
+		return "RATIO"
+	case OPR_FEEDBACK:
+		return "INDEX"
+	}
+	return "undef"
+}
+
+func (p paramId) env() string {
+	switch p & 0x03 {
+	case GRP_A:
+		return "A"
+	case GRP_B:
+		return "B"
+	case GRP_VCA:
+		return "VCA"
+	}
+	return "undef"
+}
+
+func (p paramId) envParam() string {
+	switch p & 0xFC {
+	case ENV_ATTACK:
+		return "ENV_ATTACK"
+	case ENV_DECAY:
+		return "ENV_DECAY"
+	case ENV_SUSTAIN:
+		return "ENV_SUSTAIN"
+	case ENV_RELEASE:
+		return "ENV_RELEASE"
+	case ENV_ENDLEVEL:
+		return "ENV_ENDLEVEL"
+	case ENV_INDEX:
+		return "ENV_INDEX"
+	case ENV_GATED:
+		return "ENV_GATED"
+	case ENV_RETRIGGER:
+		return "ENV_RETRIGGER"
+	default:
+		fmt.Printf("got %x as a param id, with a top nybble of %x\n", p, p&0xF0)
+	}
+	return "undef"
+}
+
+// these constants are combined together to get the unique param id for a particular param,
+// for instance envelope B's decay is ENV_DECAY|GRP_B, and operator B2's feedback would be OPR_FEEDBACK|GRP_B2
 const (
-	C_FREQ paramId = iota
-	C_RATIO
-	B_FREQ
-	B_RATIO
-	A_FREQ
-	A_RATIO
-	AENV_ATTACK
-	AENV_DECAY
-	AENV_ENDLEVEL
-	AENV_LEVEL // A index
-	AENV_GATED
-	AENV_RETRIGGER
-	BENV_ATTACK
-	BENV_DECAY
-	BENV_ENDLEVEL
-	BENV_LEVEL // B1/B2 index
-	BENV_GATED
-	BENV_RETRIGGER
-	VCA_ATTACK
-	VCA_DECAY
-	VCA_SUSTAIN
-	VCA_RELEASE
-	VCA_GATED
-	VCA_RETRIGGER
+	GRP_A   paramId = 0x0
+	GRP_B   paramId = 0x1
+	GRP_C   paramId = 0x2
+	GRP_D   paramId = 0x3
+	GRP_B1  paramId = 0x1 // B1 is an alias for B
+	GRP_B2  paramId = 0x3 // B2 is an alias for D (digitone names)
+	GRP_VCA paramId = 0x3 // VCA is an alias for D (alg has three envelopes, A, B, and VCA)
+
+	OPR_TYPE paramId = 0x0 << 2
+	ENV_TYPE paramId = 0x1 << 2
+
+	OPR_RATIO    paramId = 0x0<<4 | OPR_TYPE
+	OPR_FEEDBACK paramId = 0x1<<4 | OPR_TYPE
+
+	ENV_ATTACK    paramId = 0x0<<4 | ENV_TYPE
+	ENV_DECAY     paramId = 0x1<<4 | ENV_TYPE
+	ENV_ENDLEVEL  paramId = 0x2<<4 | ENV_TYPE
+	ENV_INDEX     paramId = 0x3<<4 | ENV_TYPE
+	ENV_GATED     paramId = 0x4<<4 | ENV_TYPE
+	ENV_RETRIGGER paramId = 0x5<<4 | ENV_TYPE
+	ENV_SUSTAIN   paramId = 0x6<<4 | ENV_TYPE
+	ENV_RELEASE   paramId = 0x7<<4 | ENV_TYPE
 )
 
 // a param wraps an fp32 or midi cc val etc
@@ -34,9 +110,17 @@ const (
 // and provide upstream voices a hook to set param values
 // also the param tree can be saved as a config
 
+type param interface {
+	ID() paramId
+}
+
 type boolparam struct {
 	id  paramId
 	val bool
+}
+
+func (p *boolparam) ID() paramId {
+	return p.id
 }
 
 func (p *boolparam) Value() bool {
@@ -51,9 +135,12 @@ func newBoolParam(id paramId, defaultValue bool) *boolparam {
 }
 
 type uint16param struct {
-	id   paramId
-	val  uint16
-	mods []*uint16
+	id  paramId
+	val uint16
+}
+
+func (p *uint16param) ID() paramId {
+	return p.id
 }
 
 func (p *uint16param) Value() uint16 {
@@ -62,16 +149,18 @@ func (p *uint16param) Value() uint16 {
 
 func newUint16Param(id paramId, defaultValue uint16) *uint16param {
 	return &uint16param{
-		id:   id,
-		val:  defaultValue,
-		mods: make([]*uint16, 0),
+		id:  id,
+		val: defaultValue,
 	}
 }
 
 type fp32param struct {
-	id   paramId
-	val  fp32
-	mods []*fp32
+	id  paramId
+	val fp32
+}
+
+func (p *fp32param) ID() paramId {
+	return p.id
 }
 
 func (p *fp32param) Value() fp32 {
@@ -84,8 +173,7 @@ func (p *fp32param) Set(v fp32) {
 
 func newFp32Param(id paramId, defaultValue float64) *fp32param {
 	return &fp32param{
-		id:   id,
-		val:  float2fp32(defaultValue),
-		mods: make([]*fp32, 0),
+		id:  id,
+		val: float2fp32(defaultValue),
 	}
 }

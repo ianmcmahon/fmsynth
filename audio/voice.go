@@ -26,17 +26,15 @@ func (engine *Engine) NewSimpleVoice(id byte) *Voice {
 		id:      vId,
 		notesOn: make([]byte, 0),
 		alg:     newTwoOpAlgorithm(vId),
-		vca: &adsrEnvelope{
-			gated:     newBoolParam(vId|VCA_GATED, true),
-			retrigger: newBoolParam(vId|VCA_RETRIGGER, false),
-			attack:    newUint16Param(vId|VCA_ATTACK, 100),
-			decay:     newUint16Param(vId|VCA_ATTACK, 200),
-			sustain:   newFp32Param(vId|VCA_SUSTAIN, 0.3),
-			release:   newUint16Param(vId|VCA_RELEASE, 800),
-		},
+		vca:     AdsrEnvelope(GRP_VCA),
 	}
 
 	return v
+}
+
+func (v *Voice) applyPatch(p *patch) {
+	v.alg.applyPatch(p)
+	v.vca.applyPatch(p)
 }
 
 func (v *Voice) Render(out []fp32) {
