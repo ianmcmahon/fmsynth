@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/gordonklaus/portaudio"
 	"github.com/ianmcmahon/fmsynth/audio"
+	"github.com/ianmcmahon/fmsynth/ui"
 	"github.com/rakyll/portmidi"
+	wde "github.com/skelterjohn/go.wde"
+	_ "github.com/skelterjohn/go.wde/cocoa"
 )
 
 type midiPort struct {
@@ -51,22 +53,26 @@ func main() {
 		os.Exit(1)
 	*/
 
+	var ch <-chan portmidi.Event
+
 	device := portmidi.DefaultInputDeviceID()
 	in, err := portmidi.NewInputStream(device, 1024)
 	if err != nil {
-		panic(err)
+		fmt.Printf("error opening midi: %v\n", err)
+	} else {
+		defer in.Close()
+
+		in.SetChannelMask(1)
+
+		ch = in.Listen()
 	}
-	defer in.Close()
-
-	in.SetChannelMask(1)
-
-	ch := in.Listen()
 
 	engine := audio.NewEngine(ch)
 
-	for {
-		time.Sleep(1 * time.Second)
-	}
+	go ui.Start()
+
+	wde.Run()
+
 	engine.Stop()
 	fmt.Printf("exiting\n")
 }
