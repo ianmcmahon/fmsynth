@@ -127,6 +127,11 @@ const (
 	ENV_RELEASE   paramId = 0x7<<4 | ENV_TYPE
 )
 
+type ccMeta struct {
+	ccNum   byte
+	convert func(byte) interface{}
+}
+
 // a param wraps an fp32 or midi cc val etc
 // so the algorithm has a convenient place to reference everything
 // and provide upstream voices a hook to set param values
@@ -134,11 +139,13 @@ const (
 
 type param interface {
 	ID() paramId
+	CC() ccMeta
 }
 
 type byteparam struct {
 	id  paramId
 	val byte
+	cc  ccMeta
 }
 
 func (p *byteparam) ID() paramId {
@@ -153,16 +160,22 @@ func (p *byteparam) Set(v byte) {
 	p.val = v
 }
 
-func newByteParam(id paramId, defaultValue byte) *byteparam {
+func (p *byteparam) CC() ccMeta {
+	return p.cc
+}
+
+func newByteParam(id paramId, defaultValue byte, cc ccMeta) *byteparam {
 	return &byteparam{
 		id:  id,
 		val: defaultValue,
+		cc:  cc,
 	}
 }
 
 type boolparam struct {
 	id  paramId
 	val bool
+	cc  ccMeta
 }
 
 func (p *boolparam) ID() paramId {
@@ -177,6 +190,10 @@ func (p *boolparam) Set(v bool) {
 	p.val = v
 }
 
+func (p *boolparam) CC() ccMeta {
+	return p.cc
+}
+
 func newBoolParam(id paramId, defaultValue bool) *boolparam {
 	return &boolparam{
 		id:  id,
@@ -187,6 +204,7 @@ func newBoolParam(id paramId, defaultValue bool) *boolparam {
 type uint16param struct {
 	id  paramId
 	val uint16
+	cc  ccMeta
 }
 
 func (p *uint16param) ID() paramId {
@@ -197,6 +215,14 @@ func (p *uint16param) Value() uint16 {
 	return p.val
 }
 
+func (p *uint16param) Set(v uint16) {
+	p.val = v
+}
+
+func (p *uint16param) CC() ccMeta {
+	return p.cc
+}
+
 func newUint16Param(id paramId, defaultValue uint16) *uint16param {
 	return &uint16param{
 		id:  id,
@@ -204,13 +230,10 @@ func newUint16Param(id paramId, defaultValue uint16) *uint16param {
 	}
 }
 
-func (p *uint16param) Set(v uint16) {
-	p.val = v
-}
-
 type fp32param struct {
 	id  paramId
 	val fp32
+	cc  ccMeta
 }
 
 func (p *fp32param) ID() paramId {
@@ -223,6 +246,10 @@ func (p *fp32param) Value() fp32 {
 
 func (p *fp32param) Set(v fp32) {
 	p.val = v
+}
+
+func (p *fp32param) CC() ccMeta {
+	return p.cc
 }
 
 func newFp32Param(id paramId, defaultValue float64) *fp32param {

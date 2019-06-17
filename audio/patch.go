@@ -1,6 +1,9 @@
 package audio
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 /*
 	A patch holds all the parameters and mod matrix info for a track
@@ -16,14 +19,20 @@ import "fmt"
 
 type patch struct {
 	params map[paramId]param
+	byCC   map[byte]param
+}
+
+func (p *patch) HandleCC(num, val byte) {
+
 }
 
 func initialPatch() *patch {
 	p := &patch{
 		params: make(map[paramId]param, 0),
+		byCC:   make(map[byte]param, 0),
 	}
 
-	p.addByte(PATCH_ALGORITHM, 0)
+	p.addByte(PATCH_ALGORITHM, 0, ccMeta{3, byteRange(0, 7)})
 	p.addFp32(PATCH_FEEDBACK, 0.0)
 	p.addFp32(PATCH_MIX, 0.5)
 
@@ -87,22 +96,58 @@ func (p *patch) Fp32Param(id paramId) *fp32param {
 	panic(fmt.Errorf("%s is a %T, expected fp32param\n", id.AsString(), p.params[id]))
 }
 
-func (p *patch) addByte(id paramId, v byte) {
-	p.params[id] = newByteParam(id, v)
-	fmt.Printf("adding byte param id %s\n", id.AsString())
+func (p *patch) addByte(id paramId, v byte, cc ccMeta) {
+	p.params[id] = newByteParam(id, v, cc)
+	p.byCC[cc.ccNum] = p.params[id]
 }
 
 func (p *patch) addBool(id paramId, v bool) {
 	p.params[id] = newBoolParam(id, v)
-	fmt.Printf("adding bool param id %s\n", id.AsString())
+	//p.byCC[cc.ccNum] = p.params[id]
 }
 
 func (p *patch) addUint16(id paramId, v uint16) {
-	fmt.Printf("adding uint16 param id %s\n", id.AsString())
 	p.params[id] = newUint16Param(id, v)
+	//p.byCC[cc.ccNum] = p.params[id]
 }
 
 func (p *patch) addFp32(id paramId, v float64) {
-	fmt.Printf("adding fp32 param id %s\n", id.AsString())
 	p.params[id] = newFp32Param(id, v)
+	//p.byCC[cc.ccNum] = &(p.params[id])
+}
+
+func byteRange(min, max byte) func(byte) interface{} {
+	// this converter returns bytes, so range is limited to 0-255 (2x upscaled)
+	if min < 0 {
+		min = 0
+	}
+	if max > math.MaxUint8 {
+		max = math.MaxUint8
+	}
+	// short circuit obvious stuff for performance
+	if min == 0 && max == 127 {
+		return func(b byte) interface{} {
+			return b
+		}
+	}
+	if min == 0 && max == 255 {
+		return func(b byte) interface{} {
+			return b << 1
+		}
+	}
+
+	return func(b byte) interface{} {
+		return byte(((uint16(b) * uint16(max+1-min)) >> 7) + uint16(min))
+	}
+}
+
+func uint16Range(min, max uint16) func(byte) interface{} {
+	if min == 0 && max == math.MaxUint16 {
+		return func(b byte) interface{} {
+			return uint16(b) << 9
+		}
+	}
+	return func(b byte) interface{} {
+		return uint16(((uint32(b) * uint32(max+1-min)) >> 7) + uint32(min))
+	}
 }

@@ -114,7 +114,7 @@ func (e *Engine) handleMidi() {
 		case CC:
 			num := byte(event.Data1)
 			val := byte(event.Data2)
-			e.HandleCC(num, val)
+			e.patch.HandleCC(num, val)
 		default:
 			fmt.Printf("unknown message: %x %x %x\n", event.Status, event.Data1, event.Data2)
 		}
