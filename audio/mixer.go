@@ -3,16 +3,18 @@ package audio
 import (
 	"fmt"
 	"sync"
+
+	"github.com/ianmcmahon/fmsynth/fp"
 )
 
 type mixerChannel struct {
 	from  Output
-	level fp32
-	atten fp32
+	level fp.Fp32
+	atten fp.Fp32
 }
 
 type Mixer interface {
-	Render(out []fp32)
+	Render(out []fp.Fp32)
 }
 
 type levelMixer struct {
@@ -28,24 +30,24 @@ func LevelMixer(inputs int) *levelMixer {
 
 	for i, _ := range mixer.Inputs {
 		mixer.Inputs[i] = &mixerChannel{
-			level: float2fp32(1.0),
-			atten: float2fp32(1.0 / float64(inputs)),
+			level: fp.Float2Fp32(1.0),
+			atten: fp.Float2Fp32(1.0 / float64(inputs)),
 		}
 	}
 
 	return mixer
 }
 
-func (m *levelMixer) Render(out []fp32) {
-	bufs := make([][]fp32, len(m.Inputs))
+func (m *levelMixer) Render(out []fp.Fp32) {
+	bufs := make([][]fp.Fp32, len(m.Inputs))
 	for i, channel := range m.Inputs {
-		bufs[i] = make([]fp32, len(out))
+		bufs[i] = make([]fp.Fp32, len(out))
 		channel.from.Render(bufs[i])
 	}
 	for i := range out {
-		sum := fp32(0)
+		sum := fp.Fp32(0)
 		for c, channel := range m.Inputs {
-			attenuated := channel.atten.mul(bufs[c][i]).mul(channel.level)
+			attenuated := channel.atten.Mul(bufs[c][i]).Mul(channel.level)
 			sum += attenuated
 		}
 		out[i] = sum

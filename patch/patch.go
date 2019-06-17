@@ -1,4 +1,4 @@
-package audio
+package patch
 
 import (
 	"fmt"
@@ -17,19 +17,19 @@ import (
 	patches from the sound pool can be applied to the track per-trig
 */
 
-type patch struct {
-	params map[paramId]param
-	byCC   map[byte]param
+type Patch struct {
+	params map[ParamId]Param
+	byCC   map[byte]Param
 }
 
-func (p *patch) HandleCC(num, val byte) {
+func (p *Patch) HandleCC(num, val byte) {
 
 }
 
-func initialPatch() *patch {
-	p := &patch{
-		params: make(map[paramId]param, 0),
-		byCC:   make(map[byte]param, 0),
+func InitialPatch() *Patch {
+	p := &Patch{
+		params: make(map[ParamId]Param, 0),
+		byCC:   make(map[byte]Param, 0),
 	}
 
 	p.addByte(PATCH_ALGORITHM, 0, ccMeta{3, byteRange(0, 7)})
@@ -65,7 +65,7 @@ func initialPatch() *patch {
 	return p
 }
 
-func (p *patch) ByteParam(id paramId) *byteparam {
+func (p *Patch) ByteParam(id ParamId) *byteparam {
 	if v, ok := p.params[id].(*byteparam); ok {
 		return v
 	}
@@ -73,7 +73,7 @@ func (p *patch) ByteParam(id paramId) *byteparam {
 	return nil
 }
 
-func (p *patch) BoolParam(id paramId) *boolparam {
+func (p *Patch) BoolParam(id ParamId) *boolparam {
 	if v, ok := p.params[id].(*boolparam); ok {
 		return v
 	}
@@ -81,7 +81,7 @@ func (p *patch) BoolParam(id paramId) *boolparam {
 	return nil
 }
 
-func (p *patch) Uint16Param(id paramId) *uint16param {
+func (p *Patch) Uint16Param(id ParamId) *uint16param {
 	if v, ok := p.params[id].(*uint16param); ok {
 		return v
 	}
@@ -89,30 +89,30 @@ func (p *patch) Uint16Param(id paramId) *uint16param {
 	return nil
 }
 
-func (p *patch) Fp32Param(id paramId) *fp32param {
+func (p *Patch) Fp32Param(id ParamId) *fp32param {
 	if v, ok := p.params[id].(*fp32param); ok {
 		return v
 	}
 	panic(fmt.Errorf("%s is a %T, expected fp32param\n", id.AsString(), p.params[id]))
 }
 
-func (p *patch) addByte(id paramId, v byte, cc ccMeta) {
-	p.params[id] = newByteParam(id, v, cc)
+func (p *Patch) addByte(id ParamId, v byte, cc ccMeta) {
+	p.params[id] = NewByteParam(id, v, cc)
 	p.byCC[cc.ccNum] = p.params[id]
 }
 
-func (p *patch) addBool(id paramId, v bool) {
-	p.params[id] = newBoolParam(id, v)
+func (p *Patch) addBool(id ParamId, v bool) {
+	p.params[id] = NewBoolParam(id, v)
 	//p.byCC[cc.ccNum] = p.params[id]
 }
 
-func (p *patch) addUint16(id paramId, v uint16) {
-	p.params[id] = newUint16Param(id, v)
+func (p *Patch) addUint16(id ParamId, v uint16) {
+	p.params[id] = NewUint16Param(id, v)
 	//p.byCC[cc.ccNum] = p.params[id]
 }
 
-func (p *patch) addFp32(id paramId, v float64) {
-	p.params[id] = newFp32Param(id, v)
+func (p *Patch) addFp32(id ParamId, v float64) {
+	p.params[id] = NewFp32Param(id, v)
 	//p.byCC[cc.ccNum] = &(p.params[id])
 }
 

@@ -1,28 +1,33 @@
 package audio
 
-import "math"
+import (
+	"math"
+
+	"github.com/ianmcmahon/fmsynth/fp"
+	"github.com/ianmcmahon/fmsynth/patch"
+)
 
 var sineTable = makeSineTable(SAMPLING_RATE)
 
 // an operator is a single oscillator that can be phase modulated
 type operator struct {
-	group    paramId
-	ratio    *fp32param
-	feedback *fp32param
-	phase    fp32
+	group    patch.ParamId
+	ratio    patch.Param
+	feedback patch.Param
+	phase    fp.Fp32
 }
 
-func Operator(group paramId) *operator {
+func Operator(group patch.ParamId) *operator {
 	return &operator{group: group}
 }
 
-func (o *operator) applyPatch(p *patch) {
-	o.ratio = p.Fp32Param(OPR_RATIO | o.group)
+func (o *operator) applyPatch(p *patch.Patch) {
+	o.ratio = p.Fp32Param(patch.OPR_RATIO | o.group)
 }
 
 // increments the phase based on frequency and returns the next sample
-func (o *operator) rotate(freq, mod fp32) fp32 {
-	f := freq.mul(o.ratio.Value()) + mod
+func (o *operator) rotate(freq, mod fp.Fp32) fp.Fp32 {
+	f := freq.Mul(o.ratio.Value().(fp.Fp32)) + mod
 
 	// phase (pitch / table_freq) * (table_len / sampling_rate) I believe
 	// but since our table is 1Hz at sampling_rate, len/rate = 1 and pitch/table = pitch
@@ -35,9 +40,9 @@ func (o *operator) rotate(freq, mod fp32) fp32 {
 	}
 	sample := sineTable[o.phase]
 
-	if o.feedback != nil && o.feedback.Value() != 0 {
+	if o.feedback != nil && o.feedback.Value().(fp.Fp32) != 0 {
 		// now apply feedback
-		o.phase += sample.mul(o.feedback.Value()) >> 16
+		o.phase += sample.Mul(o.feedback.Value().(fp.Fp32)) >> 16
 		if o.phase >= SAMPLING_RATE {
 			o.phase -= SAMPLING_RATE
 		}
@@ -52,11 +57,11 @@ func (o *operator) rotate(freq, mod fp32) fp32 {
 // an algorithm is a particular configuration of operators and envelopes
 // that exposes parameter inputs
 type algorithm interface {
-	Trigger(pitch fp32, velocity byte)
-	Retrigger(pitch fp32)
+	Trigger(pitch fp.Fp32, velocity byte)
+	Retrigger(pitch fp.Fp32)
 	Release()
-	Render(out []fp32)
-	applyPatch(p *patch)
+	Render(out []fp.Fp32)
+	applyPatch(p *patch.Patch)
 }
 
 type digitoneFourOpAlgorithm struct {
@@ -64,11 +69,11 @@ type digitoneFourOpAlgorithm struct {
 	envA, envB   *envelope
 }
 
-func makeSineTable(tableLength int) []fp32 {
-	table := make([]fp32, tableLength)
+func makeSineTable(tableLength int) []fp.Fp32 {
+	table := make([]fp.Fp32, tableLength)
 	for i := range table {
 		phase := float64(i) / float64(tableLength)
-		table[i] = float2fp32(math.Sin(2 * math.Pi * phase))
+		table[i] = fp.Float2Fp32(math.Sin(2 * math.Pi * phase))
 		// this is a 1Hz wave across the table,
 		// so a complete rotation of phase is one cycle thru table
 	}

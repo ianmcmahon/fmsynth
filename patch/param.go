@@ -1,10 +1,14 @@
-package audio
+package patch
 
-import "fmt"
+import (
+	"fmt"
 
-type paramId uint8
+	"github.com/ianmcmahon/fmsynth/fp"
+)
 
-func (p paramId) AsString() string {
+type ParamId uint8
+
+func (p ParamId) AsString() string {
 	typ := p & 0xC
 
 	switch typ {
@@ -20,7 +24,7 @@ func (p paramId) AsString() string {
 	return "undef"
 }
 
-func (p paramId) opr() string {
+func (p ParamId) opr() string {
 	switch p & 0x03 {
 	case GRP_A:
 		return "A"
@@ -34,7 +38,7 @@ func (p paramId) opr() string {
 	return "undef"
 }
 
-func (p paramId) oprParam() string {
+func (p ParamId) oprParam() string {
 	switch p & 0xFC {
 	case OPR_RATIO:
 		return "RATIO"
@@ -44,7 +48,7 @@ func (p paramId) oprParam() string {
 	return "undef"
 }
 
-func (p paramId) env() string {
+func (p ParamId) env() string {
 	switch p & 0x03 {
 	case GRP_A:
 		return "A"
@@ -56,7 +60,7 @@ func (p paramId) env() string {
 	return "undef"
 }
 
-func (p paramId) envParam() string {
+func (p ParamId) envParam() string {
 	switch p & 0xFC {
 	case ENV_ATTACK:
 		return "ENV_ATTACK"
@@ -80,7 +84,7 @@ func (p paramId) envParam() string {
 	return "undef"
 }
 
-func (p paramId) patchParam() string {
+func (p ParamId) patchParam() string {
 	switch p & 0xFC {
 	case PATCH_ALGORITHM:
 		return "ALGORITHM"
@@ -98,33 +102,33 @@ func (p paramId) patchParam() string {
 // gets feedback.  The "patch level" param that the user can tweak is OPR_FEEDBACK|PATCH_TYPE
 // and the algorithm select wires it to the appropriate operator
 const (
-	GRP_A   paramId = 0x0
-	GRP_B   paramId = 0x1
-	GRP_C   paramId = 0x2
-	GRP_D   paramId = 0x3
-	GRP_B1  paramId = 0x1 // B1 is an alias for B
-	GRP_B2  paramId = 0x3 // B2 is an alias for D (digitone names)
-	GRP_VCA paramId = 0x3 // VCA is an alias for D (alg has three envelopes, A, B, and VCA)
+	GRP_A   ParamId = 0x0
+	GRP_B   ParamId = 0x1
+	GRP_C   ParamId = 0x2
+	GRP_D   ParamId = 0x3
+	GRP_B1  ParamId = 0x1 // B1 is an alias for B
+	GRP_B2  ParamId = 0x3 // B2 is an alias for D (digitone names)
+	GRP_VCA ParamId = 0x3 // VCA is an alias for D (alg has three envelopes, A, B, and VCA)
 
-	PATCH_TYPE paramId = 0x0 << 2
-	OPR_TYPE   paramId = 0x1 << 2
-	ENV_TYPE   paramId = 0x2 << 2
+	PATCH_TYPE ParamId = 0x0 << 2
+	OPR_TYPE   ParamId = 0x1 << 2
+	ENV_TYPE   ParamId = 0x2 << 2
 
-	PATCH_ALGORITHM paramId = 0x0<<4 | PATCH_TYPE
-	PATCH_FEEDBACK  paramId = 0x1<<4 | PATCH_TYPE
-	PATCH_MIX       paramId = 0x2<<4 | PATCH_TYPE
+	PATCH_ALGORITHM ParamId = 0x0<<4 | PATCH_TYPE
+	PATCH_FEEDBACK  ParamId = 0x1<<4 | PATCH_TYPE
+	PATCH_MIX       ParamId = 0x2<<4 | PATCH_TYPE
 
-	OPR_RATIO    paramId = 0x0<<4 | OPR_TYPE
-	OPR_FEEDBACK paramId = 0x1<<4 | OPR_TYPE
+	OPR_RATIO    ParamId = 0x0<<4 | OPR_TYPE
+	OPR_FEEDBACK ParamId = 0x1<<4 | OPR_TYPE
 
-	ENV_ATTACK    paramId = 0x0<<4 | ENV_TYPE
-	ENV_DECAY     paramId = 0x1<<4 | ENV_TYPE
-	ENV_ENDLEVEL  paramId = 0x2<<4 | ENV_TYPE
-	ENV_INDEX     paramId = 0x3<<4 | ENV_TYPE
-	ENV_GATED     paramId = 0x4<<4 | ENV_TYPE
-	ENV_RETRIGGER paramId = 0x5<<4 | ENV_TYPE
-	ENV_SUSTAIN   paramId = 0x6<<4 | ENV_TYPE
-	ENV_RELEASE   paramId = 0x7<<4 | ENV_TYPE
+	ENV_ATTACK    ParamId = 0x0<<4 | ENV_TYPE
+	ENV_DECAY     ParamId = 0x1<<4 | ENV_TYPE
+	ENV_ENDLEVEL  ParamId = 0x2<<4 | ENV_TYPE
+	ENV_INDEX     ParamId = 0x3<<4 | ENV_TYPE
+	ENV_GATED     ParamId = 0x4<<4 | ENV_TYPE
+	ENV_RETRIGGER ParamId = 0x5<<4 | ENV_TYPE
+	ENV_SUSTAIN   ParamId = 0x6<<4 | ENV_TYPE
+	ENV_RELEASE   ParamId = 0x7<<4 | ENV_TYPE
 )
 
 type ccMeta struct {
@@ -137,22 +141,23 @@ type ccMeta struct {
 // and provide upstream voices a hook to set param values
 // also the param tree can be saved as a config
 
-type param interface {
-	ID() paramId
+type Param interface {
+	ID() ParamId
 	CC() ccMeta
+	Value() interface{}
 }
 
 type byteparam struct {
-	id  paramId
+	id  ParamId
 	val byte
 	cc  ccMeta
 }
 
-func (p *byteparam) ID() paramId {
+func (p *byteparam) ID() ParamId {
 	return p.id
 }
 
-func (p *byteparam) Value() byte {
+func (p *byteparam) Value() interface{} {
 	return p.val
 }
 
@@ -164,7 +169,7 @@ func (p *byteparam) CC() ccMeta {
 	return p.cc
 }
 
-func newByteParam(id paramId, defaultValue byte, cc ccMeta) *byteparam {
+func NewByteParam(id ParamId, defaultValue byte, cc ccMeta) *byteparam {
 	return &byteparam{
 		id:  id,
 		val: defaultValue,
@@ -173,16 +178,16 @@ func newByteParam(id paramId, defaultValue byte, cc ccMeta) *byteparam {
 }
 
 type boolparam struct {
-	id  paramId
+	id  ParamId
 	val bool
 	cc  ccMeta
 }
 
-func (p *boolparam) ID() paramId {
+func (p *boolparam) ID() ParamId {
 	return p.id
 }
 
-func (p *boolparam) Value() bool {
+func (p *boolparam) Value() interface{} {
 	return p.val
 }
 
@@ -194,7 +199,7 @@ func (p *boolparam) CC() ccMeta {
 	return p.cc
 }
 
-func newBoolParam(id paramId, defaultValue bool) *boolparam {
+func NewBoolParam(id ParamId, defaultValue bool) *boolparam {
 	return &boolparam{
 		id:  id,
 		val: defaultValue,
@@ -202,16 +207,16 @@ func newBoolParam(id paramId, defaultValue bool) *boolparam {
 }
 
 type uint16param struct {
-	id  paramId
+	id  ParamId
 	val uint16
 	cc  ccMeta
 }
 
-func (p *uint16param) ID() paramId {
+func (p *uint16param) ID() ParamId {
 	return p.id
 }
 
-func (p *uint16param) Value() uint16 {
+func (p *uint16param) Value() interface{} {
 	return p.val
 }
 
@@ -223,7 +228,7 @@ func (p *uint16param) CC() ccMeta {
 	return p.cc
 }
 
-func newUint16Param(id paramId, defaultValue uint16) *uint16param {
+func NewUint16Param(id ParamId, defaultValue uint16) *uint16param {
 	return &uint16param{
 		id:  id,
 		val: defaultValue,
@@ -231,20 +236,20 @@ func newUint16Param(id paramId, defaultValue uint16) *uint16param {
 }
 
 type fp32param struct {
-	id  paramId
-	val fp32
+	id  ParamId
+	val fp.Fp32
 	cc  ccMeta
 }
 
-func (p *fp32param) ID() paramId {
+func (p *fp32param) ID() ParamId {
 	return p.id
 }
 
-func (p *fp32param) Value() fp32 {
+func (p *fp32param) Value() interface{} {
 	return p.val
 }
 
-func (p *fp32param) Set(v fp32) {
+func (p *fp32param) Set(v fp.Fp32) {
 	p.val = v
 }
 
@@ -252,9 +257,9 @@ func (p *fp32param) CC() ccMeta {
 	return p.cc
 }
 
-func newFp32Param(id paramId, defaultValue float64) *fp32param {
+func NewFp32Param(id ParamId, defaultValue float64) *fp32param {
 	return &fp32param{
 		id:  id,
-		val: float2fp32(defaultValue),
+		val: fp.Float2Fp32(defaultValue),
 	}
 }

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/gordonklaus/portaudio"
+	"github.com/ianmcmahon/fmsynth/fp"
+	"github.com/ianmcmahon/fmsynth/patch"
 	"github.com/rakyll/portmidi"
 )
 
@@ -27,7 +29,7 @@ const (
 // components get their input data a bufferful at a time
 // by calling Render() on the upstream outputs
 type Output interface {
-	Render(out []fp32)
+	Render(out []fp.Fp32)
 }
 
 type Engine struct {
@@ -40,9 +42,9 @@ type Engine struct {
 	voiceMap map[byte]*Voice
 
 	// one global patch right now; this will need to be somewhere else once we're multitimbral
-	patch *patch
+	patch *patch.Patch
 
-	audioChan chan fp32
+	audioChan chan fp.Fp32
 }
 
 func NewEngine(midiStream <-chan portmidi.Event) *Engine {
@@ -51,8 +53,8 @@ func NewEngine(midiStream <-chan portmidi.Event) *Engine {
 		midiEvents:   midiStream,
 		voices:       make([]*Voice, NUM_VOICES),
 		voiceMap:     make(map[byte]*Voice, 0),
-		patch:        initialPatch(),
-		audioChan:    make(chan fp32, BUFFER_LEN*2),
+		patch:        patch.InitialPatch(),
+		audioChan:    make(chan fp.Fp32, BUFFER_LEN*2),
 	}
 
 	mixer := LevelMixer(NUM_VOICES)
@@ -124,19 +126,21 @@ func (e *Engine) handleMidi() {
 func (e *Engine) HandleCC(num, val byte) {
 	fmt.Printf("CC %x -> %x\n", num, val)
 
-	// arbitrarily mapping the 4 knobs on my kbd to VCA ADSR
-	switch num {
-	case 0x14:
-		e.patch.Uint16Param(ENV_ATTACK | GRP_VCA).Set(uint16(val << 2))
-	case 0x15:
-		e.patch.Uint16Param(ENV_DECAY | GRP_VCA).Set(uint16(val << 2))
-	case 0x16:
-		s := fp32(val) << 9
-		fmt.Printf("setting sustain to %x -> %.2f\n", val, float64(s)/float64(1<<16))
-		e.patch.Fp32Param(ENV_SUSTAIN | GRP_VCA).Set(s)
-	case 0x17:
-		e.patch.Uint16Param(ENV_RELEASE | GRP_VCA).Set(uint16(val << 2))
-	}
+	/*
+		// arbitrarily mapping the 4 knobs on my kbd to VCA ADSR
+		switch num {
+		case 0x14:
+			e.patch.Uint16Param(ENV_ATTACK | GRP_VCA).Set(uint16(val << 2))
+		case 0x15:
+			e.patch.Uint16Param(ENV_DECAY | GRP_VCA).Set(uint16(val << 2))
+		case 0x16:
+			s := fp.Fp32(val) << 9
+			fmt.Printf("setting sustain to %x -> %.2f\n", val, float64(s)/float64(1<<16))
+			e.patch.Fp32Param(ENV_SUSTAIN | GRP_VCA).Set(s)
+		case 0x17:
+			e.patch.Uint16Param(ENV_RELEASE | GRP_VCA).Set(uint16(val << 2))
+		}
+	*/
 }
 
 // TODO: this currently handles only mono 16bit audio
@@ -166,7 +170,7 @@ func (e *Engine) runAudio() {
 	// audioChan will block when buffer is full
 	// when portaudio requests a chunk, processAudio consumes from the channel
 	// and this will unblock
-	buf := make([]fp32, BUFFER_LEN)
+	buf := make([]fp.Fp32, BUFFER_LEN)
 	for {
 		start := time.Now()
 		e.input.Render(buf)
@@ -183,7 +187,7 @@ var underrun bool
 func (e *Engine) processAudio(_, out []int16) {
 	for i := range out {
 		sample := <-e.audioChan
-		out[i] = sample.to16bit()
+		out[i] = sample.To16bit()
 	}
 }
 

@@ -3,10 +3,13 @@ package audio
 import (
 	"fmt"
 	"math"
+
+	"github.com/ianmcmahon/fmsynth/fp"
+	"github.com/ianmcmahon/fmsynth/patch"
 )
 
 type Voice struct {
-	id      paramId
+	id      patch.ParamId
 	notesOn []byte
 
 	alg algorithm
@@ -21,35 +24,35 @@ func (v *Voice) CurNote() byte {
 }
 
 func (engine *Engine) NewSimpleVoice(id byte) *Voice {
-	vId := paramId(id) << 8
+	vId := patch.ParamId(id) << 8
 	v := &Voice{
 		id:      vId,
 		notesOn: make([]byte, 0),
 		alg:     newFourOpAlgorithm(vId),
-		vca:     AdsrEnvelope(GRP_VCA),
+		vca:     AdsrEnvelope(patch.GRP_VCA),
 	}
 
 	return v
 }
 
-func (v *Voice) applyPatch(p *patch) {
+func (v *Voice) applyPatch(p *patch.Patch) {
 	v.alg.applyPatch(p)
 	v.vca.applyPatch(p)
 }
 
-func (v *Voice) Render(out []fp32) {
+func (v *Voice) Render(out []fp.Fp32) {
 	v.alg.Render(out)
 	for i, s := range out {
 		out[i] = v.vca.Scale(s)
 	}
 }
 
-func (v *Voice) trigger(pitch fp32, velocity byte) {
+func (v *Voice) trigger(pitch fp.Fp32, velocity byte) {
 	v.alg.Trigger(pitch, velocity)
 	v.vca.Trigger()
 }
 
-func (v *Voice) retrigger(pitch fp32) {
+func (v *Voice) retrigger(pitch fp.Fp32) {
 	v.alg.Retrigger(pitch)
 	v.vca.Retrigger()
 }
@@ -100,6 +103,6 @@ func (v *Voice) NoteOff(note byte) {
 	}
 }
 
-func note2freq(note byte) fp32 {
-	return float2fp32(math.Pow(2, (float64(note)-69.0)/12.0) * 440.0)
+func note2freq(note byte) fp.Fp32 {
+	return fp.Float2Fp32(math.Pow(2, (float64(note)-69.0)/12.0) * 440.0)
 }
