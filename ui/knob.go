@@ -24,11 +24,6 @@ var (
 	navy    = color.RGBA{0x00, 0x1F, 0x3F, 0xaa}
 )
 
-type control interface {
-	draw.Image
-	paint(image.Rectangle)
-}
-
 type knob struct {
 	draw.Image
 	param patch.Param
@@ -45,7 +40,17 @@ func Knob(bounds image.Rectangle, param patch.Param) *knob {
 	return k
 }
 
+func (k *knob) NeedsUpdate(id patch.ParamId) image.Rectangle {
+	if k.param.ID() == id {
+		return k.Bounds()
+	}
+	return image.ZR
+}
+
 func (k *knob) paint(bounds image.Rectangle) {
+	if bounds == image.ZR {
+		return
+	}
 	fmt.Printf("in paint knob %s  %v\n", k.param.Label(), bounds)
 	k.gc.SetFillColor(navy)
 	k.gc.SetStrokeColor(silver)

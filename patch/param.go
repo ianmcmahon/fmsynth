@@ -40,6 +40,7 @@ const (
 )
 
 type Meta struct {
+	patch *Patch
 	label string
 	// ui element enum
 	// font/color overrides?
@@ -80,10 +81,11 @@ func (p *byteparam) Value() interface{} {
 
 func (p *byteparam) Set(v byte) {
 	p.val = v
+	p.meta.patch.update(p.id)
 }
 
 func (p *byteparam) SetFromCC(v byte) {
-	p.val = v
+	p.Set(v)
 }
 
 func NewByteParam(id ParamId, defaultValue byte, meta Meta) *byteparam {
@@ -114,10 +116,11 @@ func (p *boolparam) Value() interface{} {
 
 func (p *boolparam) Set(v bool) {
 	p.val = v
+	p.meta.patch.update(p.id)
 }
 
 func (p *boolparam) SetFromCC(v byte) {
-	p.Set(v >= 128)
+	p.Set(v >= 64)
 }
 
 func NewBoolParam(id ParamId, defaultValue bool, meta Meta) *boolparam {
@@ -148,10 +151,11 @@ func (p *uint16param) Value() interface{} {
 
 func (p *uint16param) Set(v uint16) {
 	p.val = v
+	p.meta.patch.update(p.id)
 }
 
 func (p *uint16param) SetFromCC(v byte) {
-	p.val = uint16(v) << 9
+	p.Set(uint16(v) << 9)
 }
 
 func NewUint16Param(id ParamId, defaultValue uint16, meta Meta) *uint16param {
@@ -182,6 +186,7 @@ func (p *fp32param) Value() interface{} {
 
 func (p *fp32param) Set(v fp.Fp32) {
 	p.val = v
+	p.meta.patch.update(p.id)
 }
 
 func (p *fp32param) SetFromCC(v byte) {

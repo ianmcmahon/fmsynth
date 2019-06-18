@@ -10,16 +10,28 @@ import (
 	"github.com/ianmcmahon/fmsynth/patch"
 )
 
+type uicomponent interface {
+	draw.Image
+	NeedsUpdate(id patch.ParamId) image.Rectangle
+	paint(image.Rectangle)
+}
+
+type placement struct {
+	uicomponent
+	at image.Point
+}
+
 type layout struct {
 	draw.Image
 	visible    bool
 	background image.Image
-	paramPage  *paramPage
+	children   []placement
 }
 
 func SampleLayout(bounds image.Rectangle) *layout {
 	layout := &layout{
-		Image: image.NewRGBA(bounds),
+		Image:    image.NewRGBA(bounds),
+		children: make([]placement, 1),
 	}
 
 	backgroundFile, err := os.Open("ui/backgrounds/efe-kurnaz-315384-unsplash.jpg")
@@ -44,25 +56,40 @@ func SampleLayout(bounds image.Rectangle) *layout {
 		ptch.GetParam(patch.ENV_RELEASE | patch.GRP_VCA),
 	}
 
-	layout.paramPage = newParamPage(params)
+	layout.children[0] = placement{newParamPage(params), image.Pt(20, 20)}
 
 	return layout
 }
 
+func (l *layout) NeedsUpdate(id patch.ParamId) image.Rectangle {
+	rect := image.ZR
+	for _, child := range l.children {
+		rect = rect.Union(child.NeedsUpdate(id))
+	}
+	return rect
+}
+
 func (l *layout) paint(bounds image.Rectangle) {
+	if bounds == image.ZR {
+		return
+	}
 	fmt.Printf("in layout paint %v\n", bounds)
 	draw.Draw(l.Image, bounds, l.background, bounds.Min, draw.Src)
 
-	// todo: check if bounds intersects the page
-	l.paramPage.paint(l.paramPage.Bounds()) // hacky, just forces repaint of the whole container
+	for _, child := range l.children {
+		// todo: check if bounds intersects the page
+		childBounds := bounds.Intersect(child.Bounds().Add(child.at))
+		fmt.Printf("layout.paint(%v) parent bounds: %v  child: %v bounds %v\n", bounds, childBounds.Add(child.at), child, childBounds)
+		child.paint(childBounds)
+		draw.Draw(l.Image, childBounds.Add(child.at), child, childBounds.Min, draw.Over)
+	}
 
-	draw.Draw(l.Image, l.paramPage.Bounds(), l.paramPage, image.ZP, draw.Over)
 }
 
 type paramPage struct {
 	draw.Image
 	params   []patch.Param
-	controls []control
+	children []placement
 	visible  bool
 	active   bool
 }
@@ -72,28 +99,47 @@ func newParamPage(params []patch.Param) *paramPage {
 	page := &paramPage{
 		Image:    image.NewRGBA(image.Rect(0, 0, 400, 240)),
 		params:   params,
-		controls: make([]control, len(params)),
+		children: make([]placement, len(params)),
 	}
 
 	for i, p := range params {
 		// todo: introspect the param to decide what control to use
-		b := image.Rect(0, 0, page.Bounds().Dx()/4, page.Bounds().Dy()/2)
-		page.controls[i] = Knob(b, p)
+		page.children[i] = placement{Knob(page.controlSize(), p), page.controlBounds(i).Min}
+		fmt.Printf("placing child %v at %v\n", page.children[i], page.children[i].at)
 	}
 
 	return page
 }
 
+func (p *paramPage) NeedsUpdate(id patch.ParamId) image.Rectangle {
+	rect := image.ZR
+	for _, c := range p.children {
+		rect = rect.Union(c.NeedsUpdate(id).Add(c.at))
+	}
+	fmt.Printf("param page needs update: %v\n", rect)
+	return rect
+}
+
+func (p *paramPage) controlSize() image.Rectangle {
+	return image.Rect(0, 0, p.Bounds().Dx()/4, p.Bounds().Dy()/2)
+}
+
+func (p *paramPage) controlBounds(i int) image.Rectangle {
+	size := p.controlSize()
+	at := image.Pt(i%4*size.Dx(), i/4*size.Dy())
+	return size.Add(at)
+}
+
 func (p *paramPage) paint(bounds image.Rectangle) {
+	if bounds == image.ZR {
+		return
+	}
 	fmt.Printf("in paramPage paint: %v\n", bounds)
-	for i, control := range p.controls {
-		// todo: check if bounds intersects the param
-		// and not everything will be a knob!
-		control.paint(control.Bounds())
-		xSize := control.Bounds().Dx()
-		ySize := control.Bounds().Dy()
-		destRect := control.Bounds().Add(image.Pt(i%4*xSize, i/4*ySize))
-		fmt.Printf("control %d painting at %v\n", i, destRect)
-		draw.Draw(p, destRect, control, image.ZP, draw.Over)
+	for i, child := range p.children {
+		if bounds.Overlaps(child.Bounds().Add(child.at)) {
+			child.paint(child.Bounds())
+			draw.Draw(p, child.Bounds().Add(child.at), child, image.ZP, draw.Over)
+			fmt.Printf("control %d painting at %v\n", i, child.Bounds().Add(child.at))
+		}
 	}
 }

@@ -20,12 +20,13 @@ import (
 type Patch struct {
 	params map[ParamId]Param
 	byCC   map[byte]Param
+
+	modified chan ParamId
 }
 
 func (p *Patch) HandleCC(num, val byte) {
 	if prm, ok := p.byCC[num]; ok {
 		prm.SetFromCC(val)
-		fmt.Printf("patch applying CC 0x%2x val %2x to param %s\n", num, val, prm.Label())
 	} else {
 		fmt.Printf("patch ignoring cc: %x %x\n", num, val)
 		fmt.Printf("%#v\n", p.byCC)
@@ -34,8 +35,9 @@ func (p *Patch) HandleCC(num, val byte) {
 
 func InitialPatch() *Patch {
 	p := &Patch{
-		params: make(map[ParamId]Param, 0),
-		byCC:   make(map[byte]Param, 0),
+		params:   make(map[ParamId]Param, 0),
+		byCC:     make(map[byte]Param, 0),
+		modified: make(chan ParamId, 0),
 	}
 
 	p.addByte(PATCH_ALGORITHM, 0, "ALG", 3)
@@ -69,6 +71,15 @@ func InitialPatch() *Patch {
 	p.addUint16(ENV_RELEASE|GRP_VCA, 0, "RELEASE", 0x17)
 
 	return p
+}
+
+// marks a parameter as updated, called by Param.Set()
+func (p *Patch) update(id ParamId) {
+	p.modified <- id
+}
+
+func (p *Patch) UpdateChannel() <-chan ParamId {
+	return p.modified
 }
 
 func (p *Patch) GetParam(id ParamId) Param {
@@ -109,6 +120,7 @@ func (p *Patch) Fp32Param(id ParamId) *fp32param {
 
 func (p *Patch) addByte(id ParamId, v byte, label string, ccNum byte) {
 	p.params[id] = NewByteParam(id, v, Meta{
+		patch: p,
 		label: label,
 		cc:    ccNum,
 	})
@@ -119,6 +131,7 @@ func (p *Patch) addByte(id ParamId, v byte, label string, ccNum byte) {
 
 func (p *Patch) addBool(id ParamId, v bool, label string, ccNum byte) {
 	p.params[id] = NewBoolParam(id, v, Meta{
+		patch: p,
 		label: label,
 		cc:    ccNum,
 	})
@@ -129,6 +142,7 @@ func (p *Patch) addBool(id ParamId, v bool, label string, ccNum byte) {
 
 func (p *Patch) addUint16(id ParamId, v uint16, label string, ccNum byte) {
 	p.params[id] = NewUint16Param(id, v, Meta{
+		patch: p,
 		label: label,
 		cc:    ccNum,
 	})
@@ -139,6 +153,7 @@ func (p *Patch) addUint16(id ParamId, v uint16, label string, ccNum byte) {
 
 func (p *Patch) addFp32(id ParamId, v float64, label string, ccNum byte) {
 	p.params[id] = NewFp32Param(id, v, Meta{
+		patch: p,
 		label: label,
 		cc:    ccNum,
 	})

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"image"
 	"image/draw"
+	"time"
 
 	"github.com/ianmcmahon/fmsynth/audio"
+	"github.com/ianmcmahon/fmsynth/patch"
 	"github.com/llgcode/draw2d"
 	wde "github.com/skelterjohn/go.wde"
 )
@@ -78,4 +80,23 @@ func Start(eng *audio.Engine) {
 	window.Screen().CopyRGBA(screen.Image.(*image.RGBA), screen.Bounds())
 	window.FlushImage()
 	window.Show()
+
+	go screen.handleUpdates(engine.CurrentPatch().UpdateChannel())
+
+	time.Sleep(2 * time.Second)
+	engine.CurrentPatch().GetParam(11).SetFromCC(50)
+}
+
+func (s *screen) handleUpdates(ch <-chan patch.ParamId) {
+	// this is probably going to be too spammy, redrawing every time a parameter changes
+	for id := range ch {
+		fmt.Printf("%d updated\n", id)
+		// ask our children if anyone is interested in this param
+		rect := s.layout.NeedsUpdate(id)
+		fmt.Printf("screen says %v needs update\n", rect)
+
+		s.paint(rect)
+		s.window.Screen().CopyRGBA(s.Image.(*image.RGBA), rect)
+		s.window.FlushImage()
+	}
 }
