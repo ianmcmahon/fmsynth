@@ -23,7 +23,13 @@ type Patch struct {
 }
 
 func (p *Patch) HandleCC(num, val byte) {
-
+	if prm, ok := p.byCC[num]; ok {
+		prm.SetFromCC(val)
+		fmt.Printf("patch applying CC 0x%2x val %2x to param %s\n", num, val, prm.Label())
+	} else {
+		fmt.Printf("patch ignoring cc: %x %x\n", num, val)
+		fmt.Printf("%#v\n", p.byCC)
+	}
 }
 
 func InitialPatch() *Patch {
@@ -32,35 +38,35 @@ func InitialPatch() *Patch {
 		byCC:   make(map[byte]Param, 0),
 	}
 
-	p.addByte(PATCH_ALGORITHM, 0, ccMeta{3, byteRange(0, 7)})
-	p.addFp32(PATCH_FEEDBACK, 0.0)
-	p.addFp32(PATCH_MIX, 0.5)
+	p.addByte(PATCH_ALGORITHM, 0, "ALG", 3)
+	p.addFp32(PATCH_FEEDBACK, 0.0, "FEEDBK", 255)
+	p.addFp32(PATCH_MIX, 0.5, "MIX", 255)
 
-	p.addFp32(OPR_RATIO|GRP_A, 1.0)
-	p.addFp32(OPR_RATIO|GRP_B1, 1.0)
-	p.addFp32(OPR_RATIO|GRP_B2, 1.0)
-	p.addFp32(OPR_RATIO|GRP_C, 1.0)
+	p.addFp32(OPR_RATIO|GRP_A, 1.0, "A", 255)
+	p.addFp32(OPR_RATIO|GRP_B1, 1.0, "B1", 255)
+	p.addFp32(OPR_RATIO|GRP_B2, 1.0, "B2", 255)
+	p.addFp32(OPR_RATIO|GRP_C, 1.0, "C", 255)
 
-	p.addBool(ENV_GATED|GRP_A, true)
-	p.addBool(ENV_RETRIGGER|GRP_A, true)
-	p.addUint16(ENV_ATTACK|GRP_A, 0)
-	p.addUint16(ENV_DECAY|GRP_A, 0)
-	p.addFp32(ENV_ENDLEVEL|GRP_A, 0.0)
-	p.addFp32(ENV_INDEX|GRP_A, 1.0)
+	p.addBool(ENV_GATED|GRP_A, true, "GATE", 255)
+	p.addBool(ENV_RETRIGGER|GRP_A, true, "RETRIG", 255)
+	p.addUint16(ENV_ATTACK|GRP_A, 0, "ATTACK", 255)
+	p.addUint16(ENV_DECAY|GRP_A, 0, "DECAY", 255)
+	p.addFp32(ENV_ENDLEVEL|GRP_A, 0.0, "ENDLVL", 255)
+	p.addFp32(ENV_INDEX|GRP_A, 1.0, "INDEX", 255)
 
-	p.addBool(ENV_GATED|GRP_B, true)
-	p.addBool(ENV_RETRIGGER|GRP_B, true)
-	p.addUint16(ENV_ATTACK|GRP_B, 0)
-	p.addUint16(ENV_DECAY|GRP_B, 0)
-	p.addFp32(ENV_ENDLEVEL|GRP_B, 0.0)
-	p.addFp32(ENV_INDEX|GRP_B, 1.0)
+	p.addBool(ENV_GATED|GRP_B, true, "GATE", 255)
+	p.addBool(ENV_RETRIGGER|GRP_B, true, "RETRIG", 255)
+	p.addUint16(ENV_ATTACK|GRP_B, 0, "ATTACK", 255)
+	p.addUint16(ENV_DECAY|GRP_B, 0, "DECAY", 255)
+	p.addFp32(ENV_ENDLEVEL|GRP_B, 0.0, "ENDLVL", 255)
+	p.addFp32(ENV_INDEX|GRP_B, 1.0, "INDEX", 255)
 
-	p.addBool(ENV_GATED|GRP_VCA, true)
-	p.addBool(ENV_RETRIGGER|GRP_VCA, false)
-	p.addUint16(ENV_ATTACK|GRP_VCA, 0)
-	p.addUint16(ENV_DECAY|GRP_VCA, 0)
-	p.addUint16(ENV_RELEASE|GRP_VCA, 0)
-	p.addFp32(ENV_SUSTAIN|GRP_VCA, 1.0)
+	p.addBool(ENV_GATED|GRP_VCA, true, "GATE", 255)
+	p.addBool(ENV_RETRIGGER|GRP_VCA, false, "RETRIG", 255)
+	p.addUint16(ENV_ATTACK|GRP_VCA, 0, "ATTACK", 0x14)
+	p.addUint16(ENV_DECAY|GRP_VCA, 0, "DECAY", 0x15)
+	p.addUint16(ENV_RELEASE|GRP_VCA, 0, "RELEASE", 0x16)
+	p.addFp32(ENV_SUSTAIN|GRP_VCA, 1.0, "SUSTN", 0x17)
 
 	return p
 }
@@ -69,7 +75,7 @@ func (p *Patch) ByteParam(id ParamId) *byteparam {
 	if v, ok := p.params[id].(*byteparam); ok {
 		return v
 	}
-	fmt.Printf("%s is a %T, expected byte\n", id.AsString(), p.params[id])
+	fmt.Printf("%x is a %T, expected byte\n", id, p.params[id])
 	return nil
 }
 
@@ -77,7 +83,7 @@ func (p *Patch) BoolParam(id ParamId) *boolparam {
 	if v, ok := p.params[id].(*boolparam); ok {
 		return v
 	}
-	fmt.Printf("%s is a %T, expected bool\n", id.AsString(), p.params[id])
+	fmt.Printf("%x is a %T, expected bool\n", id, p.params[id])
 	return nil
 }
 
@@ -85,7 +91,7 @@ func (p *Patch) Uint16Param(id ParamId) *uint16param {
 	if v, ok := p.params[id].(*uint16param); ok {
 		return v
 	}
-	fmt.Printf("%s is a %T, expected uint16\n", id.AsString(), p.params[id])
+	fmt.Printf("%x is a %T, expected uint16\n", id, p.params[id])
 	return nil
 }
 
@@ -93,27 +99,48 @@ func (p *Patch) Fp32Param(id ParamId) *fp32param {
 	if v, ok := p.params[id].(*fp32param); ok {
 		return v
 	}
-	panic(fmt.Errorf("%s is a %T, expected fp32param\n", id.AsString(), p.params[id]))
+	fmt.Printf("%x is a %T, expected fp32param\n", id, p.params[id])
+	return nil
 }
 
-func (p *Patch) addByte(id ParamId, v byte, cc ccMeta) {
-	p.params[id] = NewByteParam(id, v, cc)
-	p.byCC[cc.ccNum] = p.params[id]
+func (p *Patch) addByte(id ParamId, v byte, label string, ccNum byte) {
+	p.params[id] = NewByteParam(id, v, Meta{
+		label: label,
+		cc:    ccNum,
+	})
+	if ccNum < 128 {
+		p.byCC[ccNum] = p.params[id]
+	}
 }
 
-func (p *Patch) addBool(id ParamId, v bool) {
-	p.params[id] = NewBoolParam(id, v)
-	//p.byCC[cc.ccNum] = p.params[id]
+func (p *Patch) addBool(id ParamId, v bool, label string, ccNum byte) {
+	p.params[id] = NewBoolParam(id, v, Meta{
+		label: label,
+		cc:    ccNum,
+	})
+	if ccNum < 128 {
+		p.byCC[ccNum] = p.params[id]
+	}
 }
 
-func (p *Patch) addUint16(id ParamId, v uint16) {
-	p.params[id] = NewUint16Param(id, v)
-	//p.byCC[cc.ccNum] = p.params[id]
+func (p *Patch) addUint16(id ParamId, v uint16, label string, ccNum byte) {
+	p.params[id] = NewUint16Param(id, v, Meta{
+		label: label,
+		cc:    ccNum,
+	})
+	if ccNum < 128 {
+		p.byCC[ccNum] = p.params[id]
+	}
 }
 
-func (p *Patch) addFp32(id ParamId, v float64) {
-	p.params[id] = NewFp32Param(id, v)
-	//p.byCC[cc.ccNum] = &(p.params[id])
+func (p *Patch) addFp32(id ParamId, v float64, label string, ccNum byte) {
+	p.params[id] = NewFp32Param(id, v, Meta{
+		label: label,
+		cc:    ccNum,
+	})
+	if ccNum < 128 {
+		p.byCC[ccNum] = p.params[id]
+	}
 }
 
 func byteRange(min, max byte) func(byte) interface{} {

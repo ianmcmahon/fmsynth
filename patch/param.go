@@ -1,100 +1,8 @@
 package patch
 
-import (
-	"fmt"
-
-	"github.com/ianmcmahon/fmsynth/fp"
-)
+import "github.com/ianmcmahon/fmsynth/fp"
 
 type ParamId uint8
-
-func (p ParamId) AsString() string {
-	typ := p & 0xC
-
-	switch typ {
-	case PATCH_TYPE:
-		return fmt.Sprintf("PATCH_%s", p.patchParam())
-	case OPR_TYPE:
-		return fmt.Sprintf("OPR_%s-%s", p.opr(), p.oprParam())
-	case ENV_TYPE:
-		return fmt.Sprintf("ENV_%s-%s", p.env(), p.envParam())
-	default:
-		fmt.Printf("got %x as a param id, with a type of %x\n", p, typ)
-	}
-	return "undef"
-}
-
-func (p ParamId) opr() string {
-	switch p & 0x03 {
-	case GRP_A:
-		return "A"
-	case GRP_B1:
-		return "B1"
-	case GRP_B2:
-		return "B2"
-	case GRP_C:
-		return "C"
-	}
-	return "undef"
-}
-
-func (p ParamId) oprParam() string {
-	switch p & 0xFC {
-	case OPR_RATIO:
-		return "RATIO"
-	case OPR_FEEDBACK:
-		return "FEEDBACK"
-	}
-	return "undef"
-}
-
-func (p ParamId) env() string {
-	switch p & 0x03 {
-	case GRP_A:
-		return "A"
-	case GRP_B:
-		return "B"
-	case GRP_VCA:
-		return "VCA"
-	}
-	return "undef"
-}
-
-func (p ParamId) envParam() string {
-	switch p & 0xFC {
-	case ENV_ATTACK:
-		return "ENV_ATTACK"
-	case ENV_DECAY:
-		return "ENV_DECAY"
-	case ENV_SUSTAIN:
-		return "ENV_SUSTAIN"
-	case ENV_RELEASE:
-		return "ENV_RELEASE"
-	case ENV_ENDLEVEL:
-		return "ENV_ENDLEVEL"
-	case ENV_INDEX:
-		return "ENV_INDEX"
-	case ENV_GATED:
-		return "ENV_GATED"
-	case ENV_RETRIGGER:
-		return "ENV_RETRIGGER"
-	default:
-		fmt.Printf("got %x as a param id, with a top nybble of %x\n", p, p&0xF0)
-	}
-	return "undef"
-}
-
-func (p ParamId) patchParam() string {
-	switch p & 0xFC {
-	case PATCH_ALGORITHM:
-		return "ALGORITHM"
-	case PATCH_MIX:
-		return "MIX"
-	case PATCH_FEEDBACK:
-		return "FEEDBACK"
-	}
-	return "undef"
-}
 
 // these constants are combined together to get the unique param id for a particular param,
 // for instance envelope B's decay is ENV_DECAY|GRP_B, and operator B2's feedback would be OPR_FEEDBACK|GRP_B2
@@ -131,9 +39,13 @@ const (
 	ENV_RELEASE   ParamId = 0x7<<4 | ENV_TYPE
 )
 
-type ccMeta struct {
-	ccNum   byte
-	convert func(byte) interface{}
+type Meta struct {
+	label string
+	// ui element enum
+	// font/color overrides?
+	cc byte
+
+	// domain/range info and conversion from cc val
 }
 
 // a param wraps an fp32 or midi cc val etc
@@ -143,18 +55,23 @@ type ccMeta struct {
 
 type Param interface {
 	ID() ParamId
-	CC() ccMeta
+	Label() string
 	Value() interface{}
+	SetFromCC(byte)
 }
 
 type byteparam struct {
-	id  ParamId
-	val byte
-	cc  ccMeta
+	id   ParamId
+	val  byte
+	meta Meta
 }
 
 func (p *byteparam) ID() ParamId {
 	return p.id
+}
+
+func (p *byteparam) Label() string {
+	return p.meta.label
 }
 
 func (p *byteparam) Value() interface{} {
@@ -165,26 +82,30 @@ func (p *byteparam) Set(v byte) {
 	p.val = v
 }
 
-func (p *byteparam) CC() ccMeta {
-	return p.cc
+func (p *byteparam) SetFromCC(v byte) {
+	p.val = v
 }
 
-func NewByteParam(id ParamId, defaultValue byte, cc ccMeta) *byteparam {
+func NewByteParam(id ParamId, defaultValue byte, meta Meta) *byteparam {
 	return &byteparam{
-		id:  id,
-		val: defaultValue,
-		cc:  cc,
+		id:   id,
+		val:  defaultValue,
+		meta: meta,
 	}
 }
 
 type boolparam struct {
-	id  ParamId
-	val bool
-	cc  ccMeta
+	id   ParamId
+	val  bool
+	meta Meta
 }
 
 func (p *boolparam) ID() ParamId {
 	return p.id
+}
+
+func (p *boolparam) Label() string {
+	return p.meta.label
 }
 
 func (p *boolparam) Value() interface{} {
@@ -195,25 +116,30 @@ func (p *boolparam) Set(v bool) {
 	p.val = v
 }
 
-func (p *boolparam) CC() ccMeta {
-	return p.cc
+func (p *boolparam) SetFromCC(v byte) {
+	p.Set(v >= 128)
 }
 
-func NewBoolParam(id ParamId, defaultValue bool) *boolparam {
+func NewBoolParam(id ParamId, defaultValue bool, meta Meta) *boolparam {
 	return &boolparam{
-		id:  id,
-		val: defaultValue,
+		id:   id,
+		val:  defaultValue,
+		meta: meta,
 	}
 }
 
 type uint16param struct {
-	id  ParamId
-	val uint16
-	cc  ccMeta
+	id   ParamId
+	val  uint16
+	meta Meta
 }
 
 func (p *uint16param) ID() ParamId {
 	return p.id
+}
+
+func (p *uint16param) Label() string {
+	return p.meta.label
 }
 
 func (p *uint16param) Value() interface{} {
@@ -224,25 +150,30 @@ func (p *uint16param) Set(v uint16) {
 	p.val = v
 }
 
-func (p *uint16param) CC() ccMeta {
-	return p.cc
+func (p *uint16param) SetFromCC(v byte) {
+	p.val = uint16(v) << 9
 }
 
-func NewUint16Param(id ParamId, defaultValue uint16) *uint16param {
+func NewUint16Param(id ParamId, defaultValue uint16, meta Meta) *uint16param {
 	return &uint16param{
-		id:  id,
-		val: defaultValue,
+		id:   id,
+		val:  defaultValue,
+		meta: meta,
 	}
 }
 
 type fp32param struct {
-	id  ParamId
-	val fp.Fp32
-	cc  ccMeta
+	id   ParamId
+	val  fp.Fp32
+	meta Meta
 }
 
 func (p *fp32param) ID() ParamId {
 	return p.id
+}
+
+func (p *fp32param) Label() string {
+	return p.meta.label
 }
 
 func (p *fp32param) Value() interface{} {
@@ -253,13 +184,14 @@ func (p *fp32param) Set(v fp.Fp32) {
 	p.val = v
 }
 
-func (p *fp32param) CC() ccMeta {
-	return p.cc
+func (p *fp32param) SetFromCC(v byte) {
+	p.Set((fp.Fp32(v) - 64) << 8)
 }
 
-func NewFp32Param(id ParamId, defaultValue float64) *fp32param {
+func NewFp32Param(id ParamId, defaultValue float64, meta Meta) *fp32param {
 	return &fp32param{
-		id:  id,
-		val: fp.Float2Fp32(defaultValue),
+		id:   id,
+		val:  fp.Float2Fp32(defaultValue),
+		meta: meta,
 	}
 }
