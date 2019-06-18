@@ -1,11 +1,11 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"image/draw"
-	"image/jpeg"
-	"os"
 
+	"github.com/ianmcmahon/fmsynth/audio"
 	"github.com/llgcode/draw2d"
 	wde "github.com/skelterjohn/go.wde"
 )
@@ -29,45 +29,53 @@ import (
 	  a way to edit macros binding arbitrary parameters to them with attenuverting that all sum
 */
 
-func Start() {
-	window, err := wde.NewWindow(800, 480)
+const (
+	SCREEN_WIDTH  = 800
+	SCREEN_HEIGHT = 480
+)
+
+type screen struct {
+	draw.Image
+	bounds image.Rectangle
+	layout *layout
+
+	window wde.Window // osx specific; this needs to get factored out somehow
+}
+
+func (s *screen) paint(bounds image.Rectangle) {
+	fmt.Printf("in screen paint: %v\n", bounds)
+	s.layout.paint(bounds)
+	draw.Draw(s.Image, bounds, s.layout, bounds.Min, draw.Src)
+}
+
+// temporary
+var engine *audio.Engine
+
+func Start(eng *audio.Engine) {
+	engine = eng
+	//// osx specific
+	window, err := wde.NewWindow(SCREEN_WIDTH, SCREEN_HEIGHT)
 	if err != nil {
 		panic(err)
 	}
-
 	window.SetTitle("such synth")
 	window.LockSize(true)
-	window.Show()
+	/////
 
 	draw2d.SetFontCache(draw2d.NewFolderFontCache("ui/fonts"))
 
-	screen := image.NewRGBA(image.Rect(0, 0, 800, 480))
+	screenBounds := image.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
 
-	backgroundFile, err := os.Open("ui/backgrounds/efe-kurnaz-315384-unsplash.jpg")
-	if err != nil {
-		panic(err)
+	screen := &screen{
+		Image:  image.NewRGBA(screenBounds),
+		bounds: screenBounds,
+		window: window,
+		layout: SampleLayout(screenBounds),
 	}
 
-	backgroundImg, err := jpeg.Decode(backgroundFile)
-	if err != nil {
-		panic(err)
-	}
+	screen.paint(screenBounds)
 
-	draw.Draw(screen, screen.Bounds(), backgroundImg, image.ZP, draw.Src)
-
-	page := image.NewRGBA(image.Rect(0, 0, KNOB_SIZE.Max.X*4, KNOB_SIZE.Max.Y*2))
-
-	knobs := []string{"ATTACC", "DECAY", "SUSTN", "RELEASE", "ALG", "FEEDBK", "MIX", "BKGRD"}
-	xSize := KNOB_SIZE.Max.X
-	ySize := KNOB_SIZE.Max.Y
-	for i := 0; i < 8; i++ {
-		k := Knob(knobs[i])
-		draw.Draw(page, k.Bounds().Add(image.Pt(i%4*xSize, i/4*ySize)), k, image.ZP, draw.Over)
-	}
-
-	draw.Draw(screen, page.Bounds().Add(image.Pt(20, 20)), page, image.ZP, draw.Over)
-
-	window.Screen().CopyRGBA(screen, screen.Bounds())
+	window.Screen().CopyRGBA(screen.Image.(*image.RGBA), screen.Bounds())
 	window.FlushImage()
-
+	window.Show()
 }

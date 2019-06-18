@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
 	"math"
 
+	"github.com/ianmcmahon/fmsynth/patch"
 	"github.com/llgcode/draw2d"
 	"github.com/llgcode/draw2d/draw2dimg"
 	"github.com/llgcode/draw2d/draw2dkit"
@@ -22,43 +24,29 @@ var (
 	navy    = color.RGBA{0x00, 0x1F, 0x3F, 0xaa}
 )
 
-// draws a filled rounded rect
-func boxBackground(gc *draw2dimg.GraphicContext, rect image.Rectangle) {
-	pad := 2.0
-	radius := 10.0
-
-	pi := math.Pi
-	halfpi := pi / 2
-
-	minX := float64(rect.Min.X)
-	maxX := float64(rect.Max.X)
-	minY := float64(rect.Min.Y)
-	maxY := float64(rect.Max.Y)
-
-	gc.ArcTo(minX+radius+pad, minY+radius+pad, radius, radius, pi, halfpi)
-	gc.LineTo(maxX-radius-pad, minY+pad)
-	gc.ArcTo(maxX-radius-pad, minY+radius+pad, radius, radius, -halfpi, halfpi)
-	gc.LineTo(maxX-pad, maxY-radius-pad)
-	gc.ArcTo(maxX-radius-pad, maxY-radius-pad, radius, radius, 0, halfpi)
-	gc.LineTo(minX+radius+pad, maxY-pad)
-	gc.ArcTo(minX+radius+pad, maxY-radius-pad, radius, radius, halfpi, halfpi)
-	gc.Close()
-	gc.FillStroke()
-
+type control interface {
+	draw.Image
+	paint(image.Rectangle)
 }
 
 type knob struct {
 	draw.Image
-	value float32
-	label string
+	param patch.Param
 	gc    *draw2dimg.GraphicContext
 }
 
-func Knob(label string) *knob {
-	k := &knob{label: label}
-	k.Image = image.NewRGBA(KNOB_SIZE)
+func Knob(bounds image.Rectangle, param patch.Param) *knob {
+	k := &knob{
+		Image: image.NewRGBA(bounds),
+		param: param,
+	}
 	k.gc = draw2dimg.NewGraphicContext(k.Image)
 
+	return k
+}
+
+func (k *knob) paint(bounds image.Rectangle) {
+	fmt.Printf("in paint knob %s  %v\n", k.param.Label(), bounds)
 	k.gc.SetFillColor(navy)
 	k.gc.SetStrokeColor(silver)
 	k.gc.SetLineWidth(1)
@@ -80,9 +68,9 @@ func Knob(label string) *knob {
 	k.gc.SetLineWidth(0.5)
 	k.gc.SetStrokeColor(black)
 	k.gc.SetFillColor(yellow)
-	l, _, r, _ := k.gc.GetStringBounds(k.label)
-	k.gc.FillStringAt(k.label, float64(center.X)-(r-l)/2.0, float64(k.Bounds().Max.Y-10))
-	k.gc.StrokeStringAt(k.label, float64(center.X)-(r-l)/2.0, float64(k.Bounds().Max.Y-10))
+	l, _, r, _ := k.gc.GetStringBounds(k.param.Label())
+	k.gc.FillStringAt(k.param.Label(), float64(center.X)-(r-l)/2.0, float64(k.Bounds().Max.Y-10))
+	k.gc.StrokeStringAt(k.param.Label(), float64(center.X)-(r-l)/2.0, float64(k.Bounds().Max.Y-10))
 
 	k.gc.SetStrokeColor(fuschia)
 	k.gc.SetLineWidth(6)
@@ -91,6 +79,4 @@ func Knob(label string) *knob {
 	angle := 280.0 * (math.Pi / 180.0)
 	k.gc.ArcTo(float64(center.X), float64(center.X), 35, 35, startAngle, angle)
 	k.gc.Stroke()
-
-	return k
 }

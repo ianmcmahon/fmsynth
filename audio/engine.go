@@ -76,6 +76,10 @@ func (e *Engine) Run() {
 	go e.handleMidi()
 }
 
+func (e *Engine) CurrentPatch() *patch.Patch {
+	return e.patch
+}
+
 func (e *Engine) getVoice(note byte) *Voice {
 	best := 127
 	var bestV *Voice

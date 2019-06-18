@@ -69,7 +69,9 @@ func main() {
 
 	engine := audio.NewEngine(ch)
 
-	go ui.Start()
+	// right now the ui needs a pointer to the engine to get at the patch
+	// eventually the ui will be aware of the "tracks" which will have a current patch
+	go ui.Start(engine)
 
 	wde.Run()
 

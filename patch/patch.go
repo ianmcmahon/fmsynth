@@ -65,10 +65,14 @@ func InitialPatch() *Patch {
 	p.addBool(ENV_RETRIGGER|GRP_VCA, false, "RETRIG", 255)
 	p.addUint16(ENV_ATTACK|GRP_VCA, 0, "ATTACK", 0x14)
 	p.addUint16(ENV_DECAY|GRP_VCA, 0, "DECAY", 0x15)
-	p.addUint16(ENV_RELEASE|GRP_VCA, 0, "RELEASE", 0x16)
-	p.addFp32(ENV_SUSTAIN|GRP_VCA, 1.0, "SUSTN", 0x17)
+	p.addFp32(ENV_SUSTAIN|GRP_VCA, 1.0, "SUSTN", 0x16)
+	p.addUint16(ENV_RELEASE|GRP_VCA, 0, "RELEASE", 0x17)
 
 	return p
+}
+
+func (p *Patch) GetParam(id ParamId) Param {
+	return p.params[id]
 }
 
 func (p *Patch) ByteParam(id ParamId) *byteparam {
