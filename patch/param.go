@@ -59,6 +59,7 @@ type Param interface {
 	Label() string
 	Value() interface{}
 	SetFromCC(byte)
+	ValAsCC() byte
 }
 
 type byteparam struct {
@@ -86,6 +87,10 @@ func (p *byteparam) Set(v byte) {
 
 func (p *byteparam) SetFromCC(v byte) {
 	p.Set(v)
+}
+
+func (p *byteparam) ValAsCC() byte {
+	return p.val
 }
 
 func NewByteParam(id ParamId, defaultValue byte, meta Meta) *byteparam {
@@ -117,6 +122,13 @@ func (p *boolparam) Value() interface{} {
 func (p *boolparam) Set(v bool) {
 	p.val = v
 	p.meta.patch.update(p.id)
+}
+
+func (p *boolparam) ValAsCC() byte {
+	if p.val {
+		return 127
+	}
+	return 0
 }
 
 func (p *boolparam) SetFromCC(v byte) {
@@ -158,6 +170,10 @@ func (p *uint16param) SetFromCC(v byte) {
 	p.Set(uint16(v) << 9)
 }
 
+func (p *uint16param) ValAsCC() byte {
+	return byte(p.val >> 9)
+}
+
 func NewUint16Param(id ParamId, defaultValue uint16, meta Meta) *uint16param {
 	return &uint16param{
 		id:   id,
@@ -191,6 +207,10 @@ func (p *fp32param) Set(v fp.Fp32) {
 
 func (p *fp32param) SetFromCC(v byte) {
 	p.Set((fp.Fp32(v) - 64) << 8)
+}
+
+func (p *fp32param) ValAsCC() byte {
+	return byte((p.val >> 8) + 64)
 }
 
 func NewFp32Param(id ParamId, defaultValue float64, meta Meta) *fp32param {

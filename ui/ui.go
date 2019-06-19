@@ -1,13 +1,11 @@
 package ui
 
 import (
-	"fmt"
 	"image"
-	"image/draw"
+	"image/color"
 	"time"
 
 	"github.com/ianmcmahon/fmsynth/audio"
-	"github.com/ianmcmahon/fmsynth/patch"
 	"github.com/llgcode/draw2d"
 	wde "github.com/skelterjohn/go.wde"
 )
@@ -36,20 +34,6 @@ const (
 	SCREEN_HEIGHT = 480
 )
 
-type screen struct {
-	draw.Image
-	bounds image.Rectangle
-	layout *layout
-
-	window wde.Window // osx specific; this needs to get factored out somehow
-}
-
-func (s *screen) paint(bounds image.Rectangle) {
-	fmt.Printf("in screen paint: %v\n", bounds)
-	s.layout.paint(bounds)
-	draw.Draw(s.Image, bounds, s.layout, bounds.Min, draw.Src)
-}
-
 // temporary
 var engine *audio.Engine
 
@@ -67,25 +51,41 @@ func Start(eng *audio.Engine) {
 	draw2d.SetFontCache(draw2d.NewFolderFontCache("ui/fonts"))
 
 	screenBounds := image.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)
+	screen := BlankPane(screenBounds, color.Black)
+	layout := SampleLayout(screenBounds)
+	screen.AddChild(layout, image.ZP)
 
-	screen := &screen{
-		Image:  image.NewRGBA(screenBounds),
-		bounds: screenBounds,
-		window: window,
-		layout: SampleLayout(screenBounds),
-	}
-
-	screen.paint(screenBounds)
+	screen.paint(screen.Bounds())
 
 	window.Screen().CopyRGBA(screen.Image.(*image.RGBA), screen.Bounds())
 	window.FlushImage()
 	window.Show()
 
-	go screen.handleUpdates(engine.CurrentPatch().UpdateChannel())
+	updateRect := image.ZR
+	go func() {
+		for id := range engine.CurrentPatch().UpdateChannel() {
+			// ask our children if anyone is interested in this param
+			rect := screen.NeedsUpdate(id)
+			updateRect = updateRect.Union(rect)
+		}
+	}()
 
-	time.Sleep(2 * time.Second)
-	engine.CurrentPatch().GetParam(11).SetFromCC(50)
+	for {
+		time.Sleep(20 * time.Millisecond)
+		if updateRect == image.ZR {
+			continue
+		}
+		screen.paint(updateRect)
+		updateRect = image.ZR
+
+		// this copies the whole screenbuffer
+		// may be able to do it more efficiently on hardware
+		window.Screen().CopyRGBA(screen.Image.(*image.RGBA), screen.Bounds())
+		window.FlushImage()
+	}
 }
+
+/*
 
 func (s *screen) handleUpdates(ch <-chan patch.ParamId) {
 	// this is probably going to be too spammy, redrawing every time a parameter changes
@@ -100,3 +100,4 @@ func (s *screen) handleUpdates(ch <-chan patch.ParamId) {
 		s.window.FlushImage()
 	}
 }
+*/

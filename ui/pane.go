@@ -4,11 +4,15 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+
+	"github.com/ianmcmahon/fmsynth/patch"
 )
 
 type Pane interface {
 	image.Image
 	paint(image.Rectangle)
+	AddChild(c Pane, at image.Point)
+	NeedsUpdate(id patch.ParamId) image.Rectangle
 }
 
 type child struct {
@@ -34,9 +38,15 @@ func (p *pane) AddChild(c Pane, at image.Point) {
 	p.children = append(p.children, child{c, c.Bounds().Add(at)})
 }
 
-func (parent *pane) paint(rect image.Rectangle) {
-	draw.Draw(parent, rect, image.NewUniform(parent.backgroundColor), image.ZP, draw.Src)
+func (p *pane) NeedsUpdate(id patch.ParamId) image.Rectangle {
+	rect := image.ZR
+	for _, child := range p.children {
+		rect = rect.Union(child.NeedsUpdate(id).Add(child.bounds.Min))
+	}
+	return rect
+}
 
+func (parent *pane) UpdateChildren(rect image.Rectangle) {
 	for _, child := range parent.children {
 		// parentRect is the area of the parent image that overlaps this child
 		parentRect := rect.Intersect(child.bounds)
@@ -47,4 +57,9 @@ func (parent *pane) paint(rect image.Rectangle) {
 			draw.Draw(parent, parentRect, child, childRect.Min, draw.Over)
 		}
 	}
+}
+
+func (parent *pane) paint(rect image.Rectangle) {
+	draw.Draw(parent, rect, image.NewUniform(parent.backgroundColor), image.ZP, draw.Src)
+	parent.UpdateChildren(rect)
 }
